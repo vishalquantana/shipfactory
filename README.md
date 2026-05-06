@@ -52,6 +52,10 @@ Have a feature you've shipped and want to share? PRs are welcome.
 3. Include a porting checklist at the end
 4. Update the feature table in this README
 
+## About Us
+
+We are [Quantana](https://quantana.com.au), an AI-first design and development agency working with Fortune 500s to build bespoke AI solutions and provide the audit and training needed to ensure success. [Click here to learn more](https://quantana.com.au).
+
 ## License
 
 MIT
