@@ -1277,3 +1277,15 @@ CHAT_ENABLED = bool(os.environ.get("GOOGLE_API_KEY") or os.environ.get("OPENAI_A
 - [ ] Record stages/statuses constant for extraction prompt
 - [ ] Calendar integration for meeting prep (optional)
 - [ ] Error ticket creation when AI can't answer (optional)
+
+---
+
+<!-- Part of the ShipFactory feature spec library — https://github.com/vishalquantana/shipfactory -->
+
+## About Us
+
+We are [Quantana](https://quantana.com.au), an AI-first design and development agency working with Fortune 500s to build bespoke AI solutions and provide the audit and training needed to ensure success. [Click here to learn more](https://quantana.com.au).
+
+## License
+
+MIT

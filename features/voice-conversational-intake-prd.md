@@ -650,3 +650,15 @@ Body: { "conversation_config": { ... } }
 - **Validate collected data server-side.** The voice agent extracts strings — your server must validate them with the same rigor as form input (Zod schema, type coercion, length limits).
 - **Rate-limit the token endpoint.** Each signed URL costs money. Apply per-user rate limiting.
 - **Don't trust tool call parameters.** The LLM generates them — they may contain hallucinated field names or malformed values. Whitelist expected field names.
+
+---
+
+<!-- Part of the ShipFactory feature spec library — https://github.com/vishalquantana/shipfactory -->
+
+## About Us
+
+We are [Quantana](https://quantana.com.au), an AI-first design and development agency working with Fortune 500s to build bespoke AI solutions and provide the audit and training needed to ensure success. [Click here to learn more](https://quantana.com.au).
+
+## License
+
+MIT

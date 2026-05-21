@@ -283,3 +283,15 @@ To replicate this feature in another application:
 - [ ] **Automatic error capture** — Hook `window.onerror` + `unhandledrejection` for zero-effort bug detection
 - [ ] **Mobile entry point** — FAB button or equivalent for touch devices without right-click
 - [ ] **Haptic feedback** — Provide tactile feedback on mobile for captures, errors, and submission
+
+---
+
+<!-- Part of the ShipFactory feature spec library — https://github.com/vishalquantana/shipfactory -->
+
+## About Us
+
+We are [Quantana](https://quantana.com.au), an AI-first design and development agency working with Fortune 500s to build bespoke AI solutions and provide the audit and training needed to ensure success. [Click here to learn more](https://quantana.com.au).
+
+## License
+
+MIT
