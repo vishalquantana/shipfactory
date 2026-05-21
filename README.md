@@ -29,6 +29,7 @@ Each spec includes a **Porting Checklist** at the bottom — a step-by-step list
 |---------|-------------|
 | [Right-Click Bug Reporter](./features/rightclickbugreport.md) | In-app feedback & screenshot bug reporter with auto-capture, S3 upload, email notifications, and Jira integration |
 | [Voice Conversational Intake](./features/voice-conversational-intake-prd.md) | Voice-powered form intake using ElevenLabs Conversational AI — full WebSocket protocol, agent setup, state machine, and client/server implementation |
+| [AI Chatbot with RAG](./features/chatbotrag.md) | Intent-routed AI chatbot with pgvector RAG pipeline, proposed-changes review UI, 3-layer deduplication, voice/file input, and meeting prep |
 
 ## Spec Structure
 
