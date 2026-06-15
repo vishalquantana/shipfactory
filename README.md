@@ -31,6 +31,7 @@ Each spec includes a **Porting Checklist** at the bottom — a step-by-step list
 | [Voice Conversational Intake](./features/voice-conversational-intake-prd.md) | Voice-powered form intake using ElevenLabs Conversational AI — full WebSocket protocol, agent setup, state machine, and client/server implementation |
 | [AI Chatbot with RAG](./features/chatbotrag.md) | Intent-routed AI chatbot with pgvector RAG pipeline, proposed-changes review UI, 3-layer deduplication, voice/file input, and meeting prep |
 | [E-Signature Documents (Self-Hosted DocuSign)](./features/esignature-docusign.md) | DocuSign-style e-signature module — PDF field builder, ordered token-based signers, type/draw/upload signatures, server flatten + Certificate of Completion, tamper-evident hash-chained audit trail, plus client-side PDF compress & merge |
+| [Meeting Transcript Intelligence & RAG](./features/meeting-transcripts-rag.md) | End-to-end meeting-transcript pipeline — ingest from recorder bot / Google Meet / paste / file / API, LLM extraction into actions, notes, contacts & deal signals (auto-apply vs review), pgvector RAG over the whole collection, and a cited "Ask anything" agentic chat |
 
 ## Spec Structure
 
