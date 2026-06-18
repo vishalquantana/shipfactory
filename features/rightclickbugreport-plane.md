@@ -8,9 +8,12 @@ This document describes the right-click feedback/bug report feature with automat
 
 ## 1. Overview
 
-Users can right-click anywhere in the app to open a context menu with two options:
+Users can right-click anywhere in the app to open a context menu with three options:
 - **Report Bug** — auto-captures a screenshot of the current page
 - **Suggest Feature** — opens a blank feedback form
+- **View submissions** — navigates to the feedback history page (`/feedback`)
+
+Inside the modal, screenshots can be added three ways — a **full-page capture**, a **drag-to-select region capture**, or **upload/paste** — and every screenshot can be **marked up** in a built-in annotation editor (pen, rectangle, arrow, text) before submitting.
 
 On mobile, a floating action button (FAB) provides the same entry point.
 
@@ -24,37 +27,42 @@ Submitted reports are stored in the database, uploaded to S3, emailed to the tea
 Right-click anywhere (or tap FAB on mobile)
         │
         ▼
-┌──────────────────────┐
-│   Context Menu        │
-│  ┌─────────────────┐  │
-│  │ 🐛 Report Bug   │  │
-│  │ 💡 Suggest Feat. │  │
-│  └─────────────────┘  │
-└──────────────────────┘
+┌──────────────────────────┐
+│   Context Menu            │
+│  ┌────────────────────┐  │
+│  │ 🐛 Report Bug      │  │
+│  │ 💡 Suggest Feature │  │
+│  │ 📋 View submissions │  │
+│  └────────────────────┘  │
+└──────────────────────────┘
         │
         ▼
-┌──────────────────────────────────────┐
-│         Feedback Modal                │
-│                                       │
-│  [Bug] / [Feature]  toggle      [X]  │
-│                                       │
-│  Page: /deals/pipeline                │
-│                                       │
-│  ┌────────────────────────────────┐  │
-│  │  Auto-captured screenshot      │  │
-│  │  (preview with remove button)  │  │
-│  └────────────────────────────────┘  │
-│                                       │
-│  [📷 Capture Screen] [🖼 Upload Image]│
-│  "2/5 images · paste with ⌘+V"       │
-│                                       │
-│  ┌────────────────────────────────┐  │
-│  │  Describe the bug...           │  │
-│  │                                │  │
-│  └────────────────────────────────┘  │
-│                                       │
-│  [         Submit         ]           │
-└──────────────────────────────────────┘
+┌────────────────────────────────────────────┐
+│            Feedback Modal                    │
+│                                              │
+│  [Bug] / [Feature]  toggle             [X]  │
+│                                              │
+│  Page: /deals/pipeline                       │
+│                                              │
+│  ┌────────────────────────────────────┐    │
+│  │  Auto-captured screenshot          │    │
+│  │  (preview — ✏️ markup · 🗑 remove) │    │
+│  └────────────────────────────────────┘    │
+│                                              │
+│  [📷 Capture Screen][✂️ Capture Area][🖼 Upload]│
+│  "2/5 images · paste with ⌘+V"              │
+│                                              │
+│  ┌────────────────────────────────────┐    │
+│  │  Describe the bug...               │    │
+│  └────────────────────────────────────┘    │
+│                                              │
+│  [             Submit             ]          │
+└────────────────────────────────────────────┘
+        │
+        ├──► Capture Area → drag a rectangle → cropped screenshot
+        │
+        ├──► ✏️ Markup → full-screen editor (pen/rect/arrow/text)
+        │                 → Save flattens annotations onto image
         │
         ▼
    "Thanks for your feedback!" ✓
@@ -72,7 +80,7 @@ Right-click anywhere (or tap FAB on mobile)
 | **Trigger** | `contextmenu` event on `document` |
 | **Positioning** | Fixed at cursor (x, y), clamped to viewport edges |
 | **Dismiss** | Click outside, Escape key |
-| **Options** | "Report Bug" (red bug icon), "Suggest Feature" (amber lightbulb icon) |
+| **Options** | "Report Bug" (red bug icon), "Suggest Feature" (amber lightbulb icon), "View submissions" (navigates to `/feedback`) |
 
 ### 3.2 Feedback Modal
 
@@ -87,39 +95,111 @@ Right-click anywhere (or tap FAB on mobile)
 | **Success** | Checkmark + "Thanks for your feedback!" — auto-closes after 1500ms |
 | **Dismiss** | X button, Escape key |
 
-### 3.3 Screenshot System
+### 3.3 Screenshot System (`feedback/captureUtils.js`)
 
 | Capability | Implementation |
 |------------|----------------|
 | **Auto-capture on bug report** | Fires 200ms after modal opens via `html-to-image` (`toPng`) |
-| **Manual capture** | "Capture Screen" button — hides modal overlay, captures, restores |
-| **Upload from file** | File input accepting `image/*,.heic,.heif`, max 10MB |
+| **Full-page capture** | "Capture Screen" button — hides modal overlay, captures, restores |
+| **Region capture** | "Capture Area" button — drag-select a rectangle, then crop (see 3.4) |
+| **Markup / annotation** | Pencil button on each preview opens a full-screen editor (see 3.5) |
+| **Upload from file** | File input accepting `image/*,.heic,.heif` (multiple), max 10MB each |
 | **Paste from clipboard** | Listens for `paste` event, extracts `image/*` items |
 | **HEIC/HEIF conversion** | Auto-converts to JPEG via `heic2any` library (quality 0.85) |
 | **Max images** | 5 per report |
-| **Preview** | Horizontal scroll strip with thumbnails + remove buttons |
-| **Filter** | Excludes modal overlay, context menu, and cross-origin `<img>` elements from capture |
+| **Preview** | Horizontal scroll strip with thumbnails + per-image markup ✏️ and remove 🗑 buttons |
+| **Filter** | Excludes modal overlay, context menu, region overlay, and cross-origin `<img>` elements from capture |
 
-**Screenshot capture options:**
+**Screenshot capture options** (`capturePageDataUrl`):
 ```js
 toPng(document.body, {
   cacheBust: true,
   pixelRatio: 1,
   skipFonts: true,
   filter: (node) => {
-    if (node.id === 'feedback-modal-overlay') return false
-    if (node.id === 'feedback-context-menu') return false
-    if (node.tagName === 'IMG' && !node.src.startsWith(window.location.origin)) return false
+    // Exclude the feedback widget's own UI and cross-origin images
+    if (node.id === 'feedback-modal-overlay'
+      || node.id === 'feedback-context-menu'
+      || node.id === 'feedback-region-overlay') return false
+    if (node.tagName === 'IMG' && node.src && !node.src.startsWith(window.location.origin)) return false
     return true
   },
 })
 ```
 
-### 3.4 Mobile Entry Point (`MagicFAB.jsx`)
+### 3.4 Region Capture (`feedback/RegionSelectOverlay.jsx`)
+
+A "Capture Area" button lets users grab just part of the screen instead of the full page.
+
+| Aspect | Detail |
+|--------|--------|
+| **Trigger** | "Capture Area" button in the modal — hides the modal, mounts a full-viewport overlay |
+| **Selection** | Pointer-drag a rectangle; everything outside the selection is dimmed with four `rgba(0,0,0,0.45)` panels (clip-path-free for robustness) |
+| **Selection border** | 2px accent-colored outline around the live rectangle |
+| **Hint** | "Drag to select an area · Esc to cancel" banner shown before dragging |
+| **Cancel** | Escape (capture-phase, so the modal's own Esc handler never fires) or a drag smaller than 8×8px |
+| **Crop** | On release, the full page is captured, then `cropDataUrl()` slices the selected rect out, offset by `scrollX/scrollY` |
+| **Coordinate mapping** | Capture is `pixelRatio: 1`, so page-space coordinates map 1:1 onto image pixels |
+
+```js
+// Crop a full-page capture down to the selected viewport rect.
+export async function cropDataUrl(dataUrl, rect, scrollX = window.scrollX, scrollY = window.scrollY) {
+  const img = await loadImage(dataUrl)
+  const sx = clamp(rect.x + scrollX, 0, img.naturalWidth - 1)
+  const sy = clamp(rect.y + scrollY, 0, img.naturalHeight - 1)
+  const sw = clamp(rect.w, 1, img.naturalWidth - sx)
+  const sh = clamp(rect.h, 1, img.naturalHeight - sy)
+  const canvas = document.createElement('canvas')
+  canvas.width = sw; canvas.height = sh
+  canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
+  return canvas.toDataURL('image/png')
+}
+```
+
+> **Known limitation:** `html-to-image` renders `position: fixed` elements at their *unscrolled* location, so selections over fixed elements on a scrolled page may crop slightly wrong pixels for those elements.
+
+### 3.5 Markup / Annotation Editor (`feedback/ScreenshotAnnotator.jsx`)
+
+A pencil button on each screenshot preview opens a full-screen editor for annotating it before submission. Annotations are drawn on an HTML `<canvas>` sized to the image's native pixels and flattened back into the screenshot on save — no extra libraries.
+
+| Aspect | Detail |
+|--------|--------|
+| **Tools** | Pen (freehand), Rectangle, Arrow (with arrowhead), Text |
+| **Colors** | 4-swatch palette — Red, Amber, Blue, Black |
+| **Edit actions** | Undo (last shape), Clear (all shapes) |
+| **Text tool** | Click to place a floating input; Enter or blur commits, Escape cancels just the text |
+| **Line/font scaling** | `lineWidth = max(3, imgWidth/400)`, `fontSize = max(16, imgWidth/60)` — annotations stay proportional on hi-res captures |
+| **Save** | Flattens canvas → PNG data URL; re-encodes as JPEG (quality 0.85) if the PNG would exceed 5MB |
+| **Cancel** | Discards annotations; Escape (capture-phase) so the underlying modal stays open |
+| **Coordinates** | Pointer events are converted to image-native coordinates so drawings line up regardless of the letterboxed display size |
+| **Perf** | In-progress shape held in a ref (no re-render per `pointermove`); committed shapes mirrored in a ref so Save always reads the latest |
+
+**Drawing primitives:**
+```js
+// Each shape is a plain object replayed on every redraw:
+{ type: 'pen',   color, points: [{x, y}, ...] }
+{ type: 'rect',  color, x, y, w, h }
+{ type: 'arrow', color, x1, y1, x2, y2 }   // arrowhead computed from angle
+{ type: 'text',  color, x, y, text }
+```
+
+### 3.6 Component File Structure
+
+```
+components/
+  FeedbackMenu.jsx              # Context menu + modal + capture/upload/paste orchestration
+  FeedbackPage.jsx              # "View submissions" history page (/feedback route)
+  feedback/
+    captureUtils.js             # capturePageDataUrl() + cropDataUrl()
+    RegionSelectOverlay.jsx     # Drag-to-select region picker
+    ScreenshotAnnotator.jsx     # Full-screen markup/annotation canvas editor
+```
+
+### 3.7 Mobile Entry Point (`MagicFAB.jsx`)
 
 A floating action button includes a "Report a Bug" option with subtitle "Screenshot + description sent to team". It triggers the same `FeedbackMenu` component via an `externalOpen` prop.
 
-### 3.5 Integration Point
+### 3.8 Integration Point
 
 `FeedbackMenu` is mounted at the app root level:
 ```jsx
@@ -134,8 +214,10 @@ A floating action button includes a "Report a Bug" option with subtitle "Screens
 |---------|---------|---------|
 | `html-to-image` | ^1.11.13 | DOM-to-PNG screenshot capture |
 | `heic2any` | * | HEIC/HEIF to JPEG conversion for iOS photos |
-| `lucide-react` | * | Icons |
-| `ios-haptics` | * | Haptic feedback on mobile |
+| `lucide-react` | * | Icons (Bug, Lightbulb, X, Send, Loader2, Camera, Crop, Trash2, ImagePlus, Pencil, ClipboardList; editor: Pen, Square, MoveUpRight, Type, Undo2, Check) |
+| `ios-haptics` | * | Haptic feedback on mobile (confirm, error) |
+
+> The region picker and markup editor are built on the native `<canvas>` API — **no extra image-editing dependency** is required.
 
 ---
 
@@ -191,6 +273,8 @@ Captures unhandled JS errors automatically — separate from user-initiated feed
 - `window.onerror` — catches synchronous errors
 - `unhandledrejection` event — catches async/promise errors
 - Truncates message to 1000 chars, stack to 2000 chars
+
+**Backend:** Creates a Plane work item for the error (priority `urgent`), with the message, stack, and page URL in `description_html`. (Plane CE has no labels — use a dedicated state/priority to distinguish auto-reported errors.)
 
 ---
 
@@ -341,7 +425,7 @@ export async function createPlaneIssue({
 | Report type (bug/feature) | User selection | Manual |
 | Description text | User input | Manual |
 | Page URL | `window.location.href` | Auto |
-| Screenshots (up to 5) | Auto-capture + manual upload/paste | Both |
+| Screenshots (up to 5) | Auto-capture, region capture, upload/paste — optionally marked up | Both |
 | User email | Auth session | Auto |
 | Timestamp | Server `now()` | Auto |
 | Plane issue ID | API response | Auto |
@@ -356,8 +440,12 @@ export async function createPlaneIssue({
 - [ ] **Fetch state UUIDs** — `GET /api/v1/workspaces/{slug}/projects/{id}/states/` → hardcode backlog + todo UUIDs
 - [ ] **Test issue creation** — POST a test work item, verify it appears in Plane, delete it
 - [ ] **Context menu interception** — `contextmenu` event on document, prevent default, show custom menu
-- [ ] **Screenshot capture** — `html-to-image` `toPng`, filter out modal/menu nodes and cross-origin images
+- [ ] **Screenshot capture** — `html-to-image` `toPng`, filter out modal/menu/region-overlay nodes and cross-origin images
 - [ ] **Modal overlay management** — hide feedback modal during capture, restore after
+- [ ] **Region capture** — full-viewport drag-rectangle overlay + crop the full-page capture to the selected rect (offset by scroll position)
+- [ ] **Markup / annotation editor** — full-screen `<canvas>` over the screenshot with pen/rectangle/arrow/text tools, color palette, undo/clear; flatten annotations back into the image on save
+- [ ] **Capture-phase Escape handling** — region overlay and markup editor must capture Escape so they don't close the modal underneath
+- [ ] **View submissions page** — `/feedback` history route (`FeedbackPage.jsx`)
 - [ ] **HEIC/HEIF conversion** — `heic2any` to JPEG before upload
 - [ ] **Clipboard paste support** — `paste` event → extract `image/*` from `clipboardData`
 - [ ] **File upload with size limit** — accept `image/*,.heic,.heif`, enforce 10MB max
