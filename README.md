@@ -25,13 +25,54 @@ Each spec includes a **Porting Checklist** at the bottom — a step-by-step list
 
 ## Feature Specs
 
-| Feature | Description |
-|---------|-------------|
+Browse by category. Each link opens a self-contained spec with code, schema, and a porting checklist.
+
+### Content, SEO & Growth
+
+| Feature | What the file is |
+|---------|------------------|
+| [Automated Blog Content Engine](./features/automated-blog-content-engine.md) | A GEO-optimized, AI-driven content pipeline: discovers topics from live SERP data, generates an article + matching SVG illustration with an LLM, stores it as MDX with typed metadata, renders it with rich JSON-LD, then commits, indexes, and notifies — fully unattended |
+| [Weekly Social Carousel Generator](./features/weekly-social-carousel-generator.md) | An agent-curated "this week in…" Instagram carousel: styled HTML rendered to PNG slides via Playwright, with a sourced-only (no hallucination) news brief, then auto-posted as one carousel |
+| [SEO/GEO Component Kit](./features/seo-geo-component-kit.md) | Drop-in React components + JSON-LD generators that make content pages citable by AI Overviews/ChatGPT/Perplexity — TL;DR box, FAQ (+FAQPage), breadcrumbs (+BreadcrumbList), key takeaways, comparison table, related content, and Article/Speakable schema |
+| [Google Indexing API Integration](./features/google-indexing-api.md) | Push freshly published URLs to Google for near-instant crawl via service-account JWT auth, plus Google/Bing sitemap pinging |
+| [Dynamic Sitemap + ISR Revalidation](./features/dynamic-sitemap-isr-revalidation.md) | A DB-driven Next.js sitemap and a secret-protected `revalidatePath` endpoint so static pages refresh the moment content changes |
+| [Next.js PageSpeed Optimization](./features/nextjs-pagespeed-optimization.md) | A recipe for a 99+ PageSpeed score — self-hosted fonts, AVIF/WebP images, CSS-only animations, and Nginx/Cloudflare caching, with measured Core Web Vitals targets |
+
+### Auth, Onboarding & Billing
+
+| Feature | What the file is |
+|---------|------------------|
+| [Passwordless OTP Email Auth](./features/otp-email-auth.md) | A two-step, passwordless 6-digit email OTP login flow with rate limiting and NextAuth session creation (email provider swappable) |
+| [Waitlist Capture](./features/waitlist-capture.md) | An email/waitlist capture endpoint with honeypot + timing bot detection, IP rate limiting, dedupe, UTM tracking, and team notification |
+| [Subscription Billing](./features/subscription-billing.md) | A recurring-billing lifecycle (trial → active → past_due → cancelled) with HMAC webhook verification and state-derived access gating — built on Cashfree, designed for provider swap (Stripe/Razorpay) |
+
+### Data, Analytics & Automation
+
+| Feature | What the file is |
+|---------|------------------|
+| [CSV Ingestion Pipeline](./features/csv-ingestion-pipeline.md) | Multi-source CSV onboarding — sniff the format from header signatures, map columns via a registry, coerce types, batch-insert with dedupe, and archive the raw file |
+| [Pluggable Insights Engine](./features/insights-engine.md) | A framework that runs N modular analysis passes over your data and rolls them into an LLM executive summary — swap the domain passes, keep the engine |
+| [AI Recommendation Engine](./features/ai-recommendation-engine.md) | Concurrent LLM analyzers produce scored, de-duplicated, actionable recommendations with an approve/reject/modify workflow and behavioral learning from user decisions |
+| [Threshold Alert Monitoring](./features/threshold-alert-monitoring.md) | An aggregate → compare-to-configurable-threshold → severity-scored-alert pattern for real-time anomaly detection, with thresholds stored as JSONB |
+| [Data Freshness Tracking](./features/data-freshness-tracking.md) | Per-source staleness status (fresh / stale / outdated by age thresholds) with a dashboard widget and an onboarding checklist — for any upload/sync/scraper SaaS |
+| [Playwright Vendor-Portal Automation](./features/playwright-portal-automation.md) | A template for integrating a vendor that has a web portal but no API — OTP login, persisted browser session (`storageState`), report generation, table scraping, and concurrent-session management |
+
+### Feedback & Support
+
+| Feature | What the file is |
+|---------|------------------|
 | [Right-Click Bug Reporter](./features/rightclickbugreport.md) | In-app feedback & screenshot bug reporter with auto-capture, S3 upload, email notifications, and Jira integration |
-| [Voice Conversational Intake](./features/voice-conversational-intake-prd.md) | Voice-powered form intake using ElevenLabs Conversational AI — full WebSocket protocol, agent setup, state machine, and client/server implementation |
+| [Right-Click Bug Reporter (Plane)](./features/rightclickbugreport-plane.md) | The same in-app feedback & screenshot reporter, wired to Plane project management instead of Jira |
+
+### AI, Chat & Documents
+
+| Feature | What the file is |
+|---------|------------------|
 | [AI Chatbot with RAG](./features/chatbotrag.md) | Intent-routed AI chatbot with pgvector RAG pipeline, proposed-changes review UI, 3-layer deduplication, voice/file input, and meeting prep |
-| [E-Signature Documents (Self-Hosted DocuSign)](./features/esignature-docusign.md) | DocuSign-style e-signature module — PDF field builder, ordered token-based signers, type/draw/upload signatures, server flatten + Certificate of Completion, tamper-evident hash-chained audit trail, plus client-side PDF compress & merge |
+| [Chatbot Test & Self-Improvement Harness](./features/chatbot-test-harness.md) | A closed-loop harness for LLM chatbots — an LLM plays the user to simulate hundreds of full conversations, scores every transcript, visualizes each chat as a live tree, then runs a simulate → score → analyze → fix → re-test loop until the bot passes a stability bar |
+| [Voice Conversational Intake](./features/voice-conversational-intake-prd.md) | Voice-powered form intake using ElevenLabs Conversational AI — full WebSocket protocol, agent setup, state machine, and client/server implementation |
 | [Meeting Transcript Intelligence & RAG](./features/meeting-transcripts-rag.md) | End-to-end meeting-transcript pipeline — ingest from recorder bot / Google Meet / paste / file / API, LLM extraction into actions, notes, contacts & deal signals (auto-apply vs review), pgvector RAG over the whole collection, and a cited "Ask anything" agentic chat |
+| [E-Signature Documents (Self-Hosted DocuSign)](./features/esignature-docusign.md) | DocuSign-style e-signature module — PDF field builder, ordered token-based signers, type/draw/upload signatures, server flatten + Certificate of Completion, tamper-evident hash-chained audit trail, plus client-side PDF compress & merge |
 
 ## Spec Structure
 
