@@ -74,6 +74,12 @@ Browse by category. Each link opens a self-contained spec with code, schema, and
 | [Meeting Transcript Intelligence & RAG](./features/meeting-transcripts-rag.md) | End-to-end meeting-transcript pipeline — ingest from recorder bot / Google Meet / paste / file / API, LLM extraction into actions, notes, contacts & deal signals (auto-apply vs review), pgvector RAG over the whole collection, and a cited "Ask anything" agentic chat |
 | [E-Signature Documents (Self-Hosted DocuSign)](./features/esignature-docusign.md) | DocuSign-style e-signature module — PDF field builder, ordered token-based signers, type/draw/upload signatures, server flatten + Certificate of Completion, tamper-evident hash-chained audit trail, plus client-side PDF compress & merge |
 
+### Engineering & Agent Orchestration
+
+| Feature | What the file is |
+|---------|------------------|
+| [Parallel Multi-Agent Dev System (cmux)](./features/orchestrator-cmux-multiagent.md) | An orchestrator supervising a fleet of coding agents (Claude/Codex/Gemini) across parallel cmux panes — each in an isolated git worktree on a `feat/*` branch, integrated by a single-writer merge-train (theirs-wins + post-merge integrity gate + one version stamp) and shipped by hands-off autodeploy. Merge conflicts are designed out, not resolved. Includes every script, the git hooks, the orchestrator runbook, and hard-won best practices |
+
 ## Spec Structure
 
 Every feature spec follows a consistent format:
