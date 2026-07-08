@@ -609,6 +609,96 @@ The cost is the `-X theirs` trade-off (stale-base regressions) — bounded by th
 
 ---
 
+## 12. Field Notes — Refinements from a Production Run
+
+The following were learned running a 5-worker heterogeneous fleet (Claude Code · Codex · Gemini/Antigravity · a local model in opencode) through a ~21-ticket feature wave in one overnight session. They extend §4–§9 with the sharp edges that only show up under real load.
+
+### 12.1 Make the type-check integrity gate BASELINE-AWARE (the single biggest fix)
+
+A naive tsc gate — "run `tsc --noEmit` on the branch's changed files; block if any error is in a changed file" — **silently blocks every branch that touches a hot file** in a real codebase, because:
+
+- The gate type-checks **isolated files**, not the whole project, so cross-file names (`import { foo } from './bar'`, types defined in sibling modules) resolve to *"Cannot find name"* false errors.
+- Runtime-specific idioms (e.g. Bun accepting a `Uint8Array` as a `Response` body) are flagged by `tsc`'s stock lib even though they run fine.
+
+Result observed: master's `server.ts` showed **18 tsc "errors"** that were all pre-existing noise, and the gate refused to merge *any* branch that edited `server.ts` — jamming a large fraction of the backlog with a misleading "stale-base regressed" log line.
+
+**Fix — only block errors the branch *introduces*, not pre-existing ones.** Diff the error count of the changed files at `HEAD` (the merge result) against the same files on `origin/master`, checked in a throwaway worktree so sibling imports resolve identically:
+
+```bash
+# inside the integrity gate, after `git merge -X theirs "$b"`:
+runner="bunx"; command -v bunx >/dev/null 2>&1 || runner="bun x"
+TSC="--noEmit --pretty false --skipLibCheck --moduleResolution bundler --module esnext --target es2022 --lib es2022,dom"
+
+# changed .ts files, EXCLUDING *.test.* (they import test-runner globals tsc can't resolve)
+mapfile -t changed < <(git diff --name-only "$pre"..HEAD -- '*.ts' '*.tsx' | grep -vE '\.test\.[cm]?tsx?$')
+[ "${#changed[@]}" -eq 0 ] && { : ; }   # nothing to check
+
+$runner tsc $TSC "$shim" "${changed[@]}" >"$td/head.log" 2>&1 || true      # merged tree
+git worktree add -q --detach "$td/base" origin/master 2>/dev/null && {
+  base=(); for f in "${changed[@]}"; do [ -f "$td/base/$f" ] && base+=("$f"); done
+  ( cd "$td/base" && $runner tsc $TSC "$shim" "${base[@]}" ) >"$td/base.log" 2>&1 || true
+  git worktree remove --force "$td/base"
+}
+n_head=$(grep -c "error TS" "$td/head.log" || echo 0)
+n_base=$(grep -c "error TS" "$td/base.log" || echo 0)
+if [ "$n_head" -gt "$n_base" ]; then      # ONLY block a NET-NEW regression
+  log "INTEGRITY GATE: $b increased tsc errors ($n_base -> $n_head) — reverting"
+  git reset -q --hard "$pre"
+fi
+```
+
+> **Principles that generalize to any linter/typechecker gate:** (1) compare against a **baseline**, never an absolute-zero-errors bar, in a codebase that isn't already clean; (2) exclude `*.test.*` from a *type* gate — test files import runner globals (`bun:test`, `node:*`) that isolated `tsc` can't resolve, and they're validated by the test run anyway; (3) resolve the baseline in a **real checkout** (throwaway worktree) so cross-file resolution matches the HEAD run and false positives cancel out. The merge-train reads its own script fresh each cycle, so shipping this fix is itself just a `feat/*` branch the train integrates.
+
+### 12.2 Rate-limit levers beyond "reassign"
+
+`RATE-LTD` doesn't have to mean parking the worker:
+
+| Lever | When | How |
+|-------|------|-----|
+| **Model-swap within the pane** | The runtime bills **two model families to separate budgets** (e.g. Antigravity: Gemini *and* Claude budgets) | `/model` in that pane → pick the other family → resume the same task. Doubles effective runway; swap back when the first budget resets (often ~minutes). |
+| **Probe at the reset ETA** | A backend showed an absolute reset time ("try again at 1:55") | The banner is **stale state from before the reset** — do NOT read it and assume still-locked. When the clock passes the ETA, **test-dispatch immediately** and read back; the only truth is whether it processes. Track each capped worker's ETA and probe then, don't wait to be told. |
+| **Reassign** | No alternate budget, reset far off | Hand the task to an idle worker on another runtime. |
+
+> A rate-limited pane often keeps showing its idle input placeholder *and* a live "Working (Ns)" indicator at the same time — the **timer is the truth**, the placeholder is just the always-rendered prompt line. Don't misclassify a working Codex pane as idle.
+
+### 12.3 Context saturation — recovery differs per runtime
+
+A long-running worker fills its context window and **jams** (new messages queue behind a full session; pure "thinking" with no tool calls). Recovery is runtime-specific:
+
+| Runtime | Symptom | Recovery |
+|---------|---------|----------|
+| Claude Code | footer `ctx:100%`, `"Press up to edit queued messages"` | `Escape`×2 + `ctrl+u` to drop the queued input, then `/clear` **alone** + Enter; confirm the `ctx:%` disappears before re-dispatching. `/clear` wipes the conversation but **not** the worktree — uncommitted work survives. |
+| Local model in opencode | frozen screen, `esc` won't interrupt, "running chat completion on N messages" | `/new` does **not** reliably clear opencode — you must **exit and relaunch the CLI** (`opencode --yolo`) for a truly fresh context. A control-plane `Ctrl+C` may not land; this often needs a human at the real terminal. |
+
+> **Weak/local models: enforce one-task-per-context.** A small local model degrades badly as history grows (observed: wedged at ~400 accumulated messages on a *trivial* deletion). Give it a fresh session **between every ticket**, and route only mechanical, single-file work to it.
+
+### 12.4 More gotchas (extends §8)
+
+| # | Gotcha | Mitigation |
+|---|--------|-----------|
+| 13 | **Deleting a worktree a live worker is `cd`'d into** breaks its shell — every subsequent tool call fails with `FileSystem/NotFound` on the deleted path | During worktree cleanup, never remove a dir any pane currently occupies. Prune only *merged* branches' worktrees; check each isn't a live cwd first. |
+| 14 | **Big multi-line dispatch pastes "collapse" and don't submit** (`"paste again to expand"`, a doubled `❯ ❯`, or an `N new messages` counter) | Press Enter again; if still staged, `Escape`×2 + `ctrl+u` and re-send a **shorter** payload. Always confirm a spinner started before moving on. |
+| 15 | **Shipped tickets stay OPEN in the tracker** — the merge-train ships code but doesn't touch the issue tracker | Periodically reconcile: for each merged `feat/kla-<n>` branch, mark ticket `<n>` Done via the tracker API. Throttle bulk closes (~1.3s/call) to dodge 429s. A stale board hides real remaining work. |
+| 16 | **Worktrees accumulate** (one per task, forever) — hundreds pile up | Sweep periodically: `git worktree remove` every **merged** branch's dir; for merged branches with *uncommitted* leftover edits, `git diff > save.patch` first, then force-remove. Keep only the main checkout + genuinely-unmerged branches + live workers' dirs. |
+| 17 | **A stale-base branch that only edits a hot HTML file** can't be caught by a *type* gate (no `.ts` change) | Lane discipline (§6.3) is the primary defense; for critical HTML/bundle files, keep the feature-marker-count check from §4.4 alongside the tsc-baseline check. |
+
+### 12.5 Orchestrator UX: a per-tick progress heatmap
+
+When driving a multi-ticket wave, render a compact dot-map every status tick so the human sees velocity at a glance — `#` shipped, `*` in-flight, `·` queued — plus a rough ETA from observed throughput:
+
+```
+ WAVE (TICKET-146…166)                    # shipped   * in-flight   · queued
+ 146#  147#  148#  149#  150*  151*
+ 152#  153·  154*  155#  156#  157#
+ 158#  159·  160·  161#  162#  163·
+ 164·  165*  166·
+ progress ▓▓▓▓▓▓▓▓▓░░░░░░░░░░░  9/21 shipped · ETA ~2h
+```
+
+Pair it with a one-line prod-truth check each tick (`prod HEAD == origin/master`, health `200`) so "is it actually live?" is never a guess. Keep a **light heartbeat** (a self-scheduled wake) so the loop survives even when no worker event fires.
+
+---
+
 <!-- Part of the ShipFactory feature spec library — https://github.com/vishalquantana/shipfactory -->
 
 ## About Us
