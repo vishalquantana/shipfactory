@@ -697,6 +697,49 @@ When driving a multi-ticket wave, render a compact dot-map every status tick so 
 
 Pair it with a one-line prod-truth check each tick (`prod HEAD == origin/master`, health `200`) so "is it actually live?" is never a guess. Keep a **light heartbeat** (a self-scheduled wake) so the loop survives even when no worker event fires.
 
+### 12.6 The integrity gate is not enough — add a BOOT SMOKE (learned from two prod outages)
+
+A single overnight run of ~30 tickets caused **two production outages**, both from bad code that the type/syntax gates *passed*. The fixes below make the pipeline genuinely hard to break — each was learned by getting bitten.
+
+**Outage 1 — a syntax error slipped a count-based gate.** A `-X theirs` merge dropped a closing brace; the file wouldn't parse. The baseline-aware tsc gate (§12.1) compares *error counts* — but a fatal parse error makes tsc **bail early with FEWER errors** than the pre-existing baseline noise, so `n_head < n_base` and it shipped. Prod crash-looped.
+> **Fix: hard-gate syntax-class errors independently of the count.** Syntax errors are `TS1xxx`; block on ANY net-new one regardless of total count — a file that won't parse must never merge, no matter how noisy the baseline.
+
+**Outage 2 — a runtime boot-crash the gates can't see.** A branch parsed and type-checked fine but threw on boot (a migration referencing a column its schema never created: `no such column`). The type gate has no way to catch this. And critically: **a bad `master` defeats prod's health-rollback** — autodeploy reverts the prod *checkout* to last-good, then re-pulls the still-bad `master` next cycle and re-breaks. The rollback can't win while the trunk is poisoned.
+> **Fix: a BOOT SMOKE before `git push`.** After merging + version-stamping, actually **start the server, wait for its ready-log, `curl` it for 200, then kill it** — if it doesn't come up, revert to `origin/master` and DON'T push. This catches syntax, import, *and* runtime boot-crashes. Known-good boots in ~4s locally (it can share the real DB — startup migrations are idempotent). This gate caught every subsequent boot-crash before it reached prod.
+```bash
+boot_smoke(){                      # runs post-merge, pre-push; return 1 ⇒ don't push
+  local port=9187 lf pid ok=0
+  # free the port ROBUSTLY — a stray process (even your own diagnostic) => EADDRINUSE,
+  # a FALSE boot-fail that blocks EVERY branch. pkill-by-pattern is not enough:
+  pkill -f "PORT=$port bun run server.ts" 2>/dev/null
+  command -v lsof >/dev/null && lsof -ti:"$port" | xargs -r kill -9 2>/dev/null
+  lf=$(mktemp); ( cd "$REPO/app" && PORT=$port your-run-cmd >"$lf" 2>&1 ) & pid=$!
+  ( sleep 55 && kill -9 "$pid" 2>/dev/null ) &          # watchdog (no `timeout` on macOS)
+  for i in $(seq 1 50); do
+    kill -0 "$pid" 2>/dev/null || break                  # process died = boot crash
+    grep -qE "READY_LOG_MARKER" "$lf" && { ok=1; break; }
+    sleep 1
+  done
+  [ "$ok" = 1 ] && [ "$(curl -s -o /dev/null -w '%{http_code}' localhost:$port/)" = 200 ] || ok=0
+  kill "$pid" 2>/dev/null
+  [ "$ok" = 1 ] || { log "BOOT SMOKE FAILED"; tail -12 "$lf"; return 1; }
+}
+```
+
+**Recovering a poisoned trunk (prod is crash-looping):** don't touch prod — fix `master`, let autodeploy redeploy. (1) `pkill` the merge-loop so it stops re-merging the bad branch; (2) roll `master` back to the last-good SHA (verify *that* boots first) and `git push --force-with-lease` as the orchestrator; (3) **quarantine** the bad branch (`git worktree remove --force` + rename `feat/*`→`wip/*`) so the restarted loop can't re-merge it; (4) autodeploy pulls the good `master` and prod recovers in ~50s; (5) restart the loop. Isolate *which* branch is bad by boot-testing each individually on top of master.
+
+**Make crash-loops LOUD, not silent.** The service had `Restart=always RestartSec=3` with the default `StartLimitIntervalSec=10s` — at 3s/restart, 5 restarts take ~15s, so the limit *never trips* and it loops forever invisibly. Set `StartLimitIntervalSec=60 StartLimitBurst=5` so a genuine loop enters a **failed** state (a signal you can detect + rollback on) instead of thrashing silently. Add `MemoryMax`/`MemoryHigh` too, so a memory spike OOM-kills only the app's cgroup, not arbitrary system processes.
+
+**Retire integrity markers a ticket is *supposed* to change.** The feature-marker gate (§4.4) blocked a legit ticket for dropping a protected marker count — but that ticket's whole job was to *refactor* that feature. A guard that fights intended work is worse than no guard: verify the change is good (boot it), then **retire that specific marker**. Guards protect invariants; a feature under active rework isn't an invariant.
+
+**Meta-lesson: gates will have false-positives, and a false-positive that halts the pipeline is its own outage.** Budget for fixing the *gates* as fast as you fix the code — of the guards added this run, several needed same-night robustness fixes (the port-conflict false-fail, the `grep -c` returning `0\n0` and breaking an integer test, the over-eager marker guard). A gate you can't quickly tune becomes a bottleneck everyone routes around.
+
+### 12.7 Fleet economics: multi-budget model-swaps and one-task-per-context locals
+
+- **A single CLI pane can hold several independently-metered model budgets.** One agent runtime exposed Gemini, Claude (Sonnet/Opus), and an open model as *separate* quotas. When one hits "quota reached", `/model`-swap to another family and the *same task resumes* — multiplying runway instead of parking the pane. Cycle through the families on exhaustion before retiring a worker.
+- **Weak/local models need one-task-per-context.** A small local model (in an opencode-style CLI) degraded badly as history grew and **wedged** at ~400 accumulated messages on a *trivial* task. Its `/new` didn't reliably clear — a true reset needed **exiting and relaunching the CLI**. Give such workers a fresh process per ticket and route only mechanical, single-file work to them.
+- **Reconcile the tracker.** The merge-train ships code but never closes issues — periodically bulk-close tickets whose `feat/<id>` branch is merged (throttle API calls to dodge 429s). A stale board hides the real remaining work; one sweep closed ~90 already-shipped-but-open tickets.
+
 ---
 
 <!-- Part of the ShipFactory feature spec library — https://github.com/vishalquantana/shipfactory -->
