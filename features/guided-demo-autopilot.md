@@ -8,7 +8,7 @@ It is **not a video and not a mock**. Every click goes to the real app, so the d
 
 > Reference build: a React 19 + Vite + Tailwind + `motion` PWA (a B2B reinsurance platform demo, Sep 2026). Two tours, 47 + 41 steps, 79 narrated lines, ~6,100 characters of ElevenLabs audio (~7 min), about 4.5 min per tour at 1×. Built and hardened in a few days with Claude Code. The code in §12 is lifted from that build and is unit- and e2e-tested there.
 
-Everything needed to rebuild it is here: the UX, the architecture, every algorithm and timing constant, the tested core code, the narration pipeline, the test harness, the lessons from 13 rounds of fixes, and the **prompts** (§14) that make an AI coding agent build it end to end.
+Everything needed to rebuild it is here: the UX, the architecture, every algorithm and timing constant, the tested core code, the narration pipeline, the test harness, the lessons from 13 rounds of fixes, how to tailor the story to each audience (§4.4), and the **prompts** (§14) that make an AI coding agent build it end to end.
 
 ---
 
@@ -212,6 +212,64 @@ Keep script files **free of runtime imports** (type-only imports), so `node scri
 - **Name the human guardrail** wherever AI acts: "Nothing goes out until you approve it."
 - **Chapters of 3–6 steps**, 8–11 chapters per tour, ~4–5 min per tour at 1×. A finale of one or two lines, then the end card.
 - **Spell numbers the way they should be spoken** if the TTS stumbles ("ninety percent", "1 January").
+
+### 4.4 Tailoring the story to the audience
+
+The engine is the same for every audience; the **story** is not. A CFO, an operations lead, a CTO and the person who will use the screen every day all watch the same clicks and care about different things. Write one script per audience (they're cheap: the steps and targets are shared, only the lines, the order and the emphasis change). Four artefacts, in order; §14 Prompts 2A–2D produce each one.
+
+**1. Audience brief** (one page, before any line is written)
+
+| Field | What to capture | Example (CFO of a mid-size distributor) |
+|---|---|---|
+| Who | Role, seniority, technical depth, how they'll watch (live with a presenter, or alone on a phone link) | CFO, non-technical, watching a link the CEO forwarded |
+| Job to be done | What they're accountable for, the number on their scorecard | Cash conversion, audit-clean books, headcount flat |
+| Pain today | The status quo in their words, and what it costs (time, money, risk, embarrassment) | "Month-end takes nine days and I still don't trust the AR number" |
+| Trigger | Why now: the event that makes this urgent | New auditor; a missed covenant last quarter |
+| Their words | Verbatim phrases from calls, emails, notes (with the source) | "single source of truth", "I don't want another tool to babysit" |
+| Objections | What they'll be thinking while watching | Cost; "will my team actually use it"; AI making changes to the books |
+| What "yes" looks like | The decision or next step this demo should earn | Approves a 6-week pilot |
+| Time budget | Minutes they'll realistically give it | 3 minutes alone; 6 with a presenter |
+| Avoid | Topics, features or words that lose this person | Integration details; anything that sounds like more work for finance |
+
+Facts come from sources (transcripts, emails, CRM notes, the customer's site). If something is a guess, mark it `ASSUMPTION` so a human checks it before the audio is generated.
+
+**2. Protagonist and case**
+
+Tell the story of **one** concrete case, not a feature list: one named customer, deal, claim or order, with realistic numbers that are actually on screen. The viewer should be able to retell it ("it took the Northwind order from a messy PDF to cash in the bank"). Use the app's seed data; if the seed lacks a case that fits this audience, add one (deterministic, §8) rather than narrating around it.
+
+**3. Story spine** (maps beats to chapters before any line is written)
+
+| Beat | Purpose | Typical length |
+|---|---|---|
+| **Hook** | Open on *their* problem or the outcome they want, in their words, not on the logo or the dashboard | 1–2 steps |
+| **Stakes** | What the status quo costs this person; one number if you have it | 1 step |
+| **The turn** | The first moment the product does something they couldn't before: the first "aha" | 1 chapter |
+| **Rising proof** | 2–3 escalating wins, each tied to a field in the brief (a KPI, a pain, an objection) | 3–6 chapters |
+| **Guardrail** | Answer the biggest objection on screen: who approves, what's audited, what can't go wrong | 1 chapter or woven in |
+| **Resolution** | The after-state for the protagonist case, measured, with a callback to the hook | 1 chapter |
+| **Close** | One line that sets up what "yes" looks like (the pilot, the next meeting); no hard sell | 1–2 steps |
+
+Order the chapters by **this person's priorities**, not by the app's navigation. Cut every chapter that doesn't serve a row in the brief: a shorter tour that lands beats a complete one that drifts.
+
+**4. Audience lens** (same screen, different line)
+
+| Screen | Operations lead | CFO | CTO / IT | Daily user |
+|---|---|---|---|---|
+| AI extraction | "Sixteen fields filled in seconds; your team only checks the two it flags." | "Fewer hours per order, and every number links back to the page it came from." | "Each field carries its source and a confidence score; low confidence routes to a person." | "Drop the PDF in. It fills the form; you fix what's highlighted." |
+| Approval | "Nothing goes out until you approve it." | "Every approval is logged against a named person: audit-ready by default." | "Role-based approvals, an immutable audit trail, exportable." | "One tap to approve, and it's off your list." |
+| Dashboard | "See what's stuck before it's late." | "Cash position today, not at month-end." | "One source of truth; no syncing spreadsheets." | "Your queue, sorted by what's due." |
+
+**Storytelling rules that make it compelling**
+- **The viewer is the hero, the product is the guide.** Lines talk about what *they* can now do ("you see it before it's late"), not what the product "leverages".
+- **Specific beats general.** "$41,200 short, and it shows you the three endorsements why" beats "powerful reconciliation".
+- **Show, then say.** The line names the payoff while the click reveals it; never describe what they can already see.
+- **Open a loop, close it later.** Raise a question in the hook ("Where did that $41,200 go?") and pay it off in the resolution.
+- **Rule of three, rising.** Group wins in threes, each bigger than the last; save the strongest for just before the resolution.
+- **Callback ending.** The last line echoes the first, now resolved ("Nine days became one morning").
+- **Read it aloud.** About 150 spoken words a minute: a 22-word line is ~9 s. If you stumble reading it, the voice will too.
+- **No invented facts.** Every number, name and quote must exist in the app or the sources; flag anything else.
+
+**Variants in code:** keep shared step builders (targets, actions, timing) in one module and one script file per audience that supplies the lines, the order and the chapter titles. Prefix step ids with the audience (`cfo-hook`, `ops-hook`) so each variant gets its own audio files, export each as a separate tour, and pick it with `&tour=cfo` (§5.10, §7). Regenerate narration only for the variant that changed.
 
 ---
 
@@ -1114,7 +1172,7 @@ Other frameworks: `runner.ts`, `narrator.ts`, `dockEdge`, the narration script a
 
 ## 14. The Prompt Kit (drop-in)
 
-Use these with Claude Code (or any coding agent) in the target repo. **Copy this file into the repo first** (e.g. `docs/features/guided-demo-autopilot.md`) so every prompt can reference it. Run them in order; each ends at a verifiable checkpoint. Prompt 0 alone does the whole build when the app is small; for a large app, run 1–8 one at a time.
+Use these with Claude Code (or any coding agent) in the target repo. **Copy this file into the repo first** (e.g. `docs/features/guided-demo-autopilot.md`) so every prompt can reference it. Run them in order; each ends at a verifiable checkpoint. Prompt 0 alone does the whole build when the app is small; for a large app, run 1–8 one at a time. For the story, run 2A → 2B → 2 → 2C for each audience; 2D re-cuts an existing tour for a new one.
 
 ### Prompt 0 · Whole build in one go
 ```
@@ -1126,13 +1184,16 @@ Context you must gather first (don't ask me unless truly ambiguous):
 - the app's framework, router, state store, styling system and brand colours (match them in the overlay);
 - the main user journey a buyer should see in ~4–5 minutes (read README, docs/, notes/, any demo or sales
   script; if none exists, propose one: 8–10 chapters, 35–50 steps, ending on the strongest outcome);
-- the vocabulary customers use (transcripts, notes); use their words in the lines.
+- the vocabulary customers use (transcripts, notes); use their words in the lines;
+- who the audience is: if I named one, build the audience brief and story spine (§4.4, Prompts 2A–2B)
+  before writing any line; if not, ask me once, then default to the economic buyer.
 
 Then work in this order, committing after each stage and running the checks named in the spec:
 1. Host-app readiness (§8): data-demo ids, deterministic reset(), fixed demo clock, store actions for
    chapter prepare(), Escape closes overlays, exiting pages ignore taps.
 2. src/demo/types.ts, runner.ts, narrator.ts, start.ts copied from §12 (adapt names only) + runner.test.ts.
-3. The script(s) (§4) with NARRATION and CHAPTER_META exports. Follow §4.3 for every line.
+3. The script(s) (§4) with NARRATION and CHAPTER_META exports. Follow §4.3 for every line and the §4.4
+   story spine for the chapter order; run the table read (Prompt 2C) before generating any audio.
 4. Autopilot.tsx controller (§5, §12.5) + overlay (Spotlight, Cursor, SubtitleDock with dockEdge, Splash,
    EndCard, ChapterOverview, UpNextCard, ProgressRail, NarratorMenu) + dock.test.ts. Mount it once in the
    app shell; add "Play guided demo" to the user menu (calls startGuidedDemo() inside the click).
@@ -1161,12 +1222,50 @@ Read docs/features/guided-demo-autopilot.md §8 and §11. Audit this app for aut
 Don't build the tour yet. Run the existing tests and show me the table.
 ```
 
+### Prompt 2A · Audience brief (run before writing any line)
+```
+Read docs/features/guided-demo-autopilot.md §4.4. The audience for this tour is: <ROLE + COMPANY, e.g.
+"the CFO of Northwind Distribution, watching alone on a link the CEO forwarded">.
+
+Build the audience brief as docs/demo/<audience>-brief.md using the table in §4.4 (Who, Job to be done,
+Pain today, Trigger, Their words, Objections, What "yes" looks like, Time budget, Avoid).
+Sources: <transcripts / emails / CRM notes / their website / LinkedIn / our proposal: paths or pastes>.
+- Quote their words verbatim with the source (file + line, or meeting + date). Prefer the audience's own
+  words over our marketing words.
+- Every claim needs a source; anything you infer is marked ASSUMPTION.
+- Rank their top 3 pains and top 3 objections by how much they'd change the decision.
+- Pick the protagonist case (§4.4 step 2) from the app's seed data that best shows their top pain being
+  solved. If none fits, propose the seed record to add (deterministic, with on-screen numbers).
+Finish with a 2-sentence "If they remember one thing" statement. Don't write the script yet.
+```
+
+### Prompt 2B · Story spine and chapter plan
+```
+Read docs/features/guided-demo-autopilot.md §4.4 and docs/demo/<audience>-brief.md.
+Design the story for this audience before any line is written.
+
+1. Give me 3 different story angles in 2-3 sentences each (for example: "a day in their life", "one deal,
+   end to end", "before / after month-end", "the audit question they dread"). Pick the strongest one for
+   this brief and say why, in one line.
+2. For that angle, fill the story spine (Hook, Stakes, The turn, Rising proof ×2-3, Guardrail,
+   Resolution, Close). For each beat: the screen(s) and data-demo targets that show it, the brief field
+   it serves (pain / KPI / objection / "yes"), and a draft headline line.
+3. Turn it into a chapter plan ordered by this audience's priorities: chapter title (their words, not
+   our menu names), beat, steps, estimated seconds. Total within their time budget (~150 spoken words per
+   minute + click time). List the app features you deliberately left out and why.
+4. Write the hook line and the closing callback line first, as a pair, so the ending pays off the opening.
+Show the spine and chapter plan as tables. Don't write the full script yet.
+```
+
 ### Prompt 2 · Write the script (the talk track)
 ```
-Read docs/features/guided-demo-autopilot.md §4 (especially §4.3). Write src/demo/script.ts: the guided tour
-for <AUDIENCE, e.g. "the CFO evaluating us">, about 4–5 minutes at 1×, 8–10 chapters, 35–50 steps.
+Read docs/features/guided-demo-autopilot.md §4 (especially §4.3 and §4.4). Write src/demo/<audience>.ts:
+the guided tour for <AUDIENCE, e.g. "the CFO evaluating us">, within the brief's time budget (default
+about 4–5 minutes at 1×, 8–10 chapters, 35–50 steps).
 
-Inputs: <paste the demo script / journey / transcript excerpts, or point to files>.
+Inputs: docs/demo/<audience>-brief.md and the story spine + chapter plan from Prompts 2A–2B (run them
+first if they don't exist), plus <the demo script / journey / transcript excerpts, or point to files>.
+Follow the spine's chapter order; open with the agreed hook line and end with its callback.
 Rules: one idea per step, ≤22 words, spoken English, the customer's own phrases verbatim where possible,
 outcomes not UI instructions, concrete on-screen numbers, name the human approval wherever AI acts,
 the line must be true *while* its click happens. Every target uses data-demo ids from Prompt 1 with a
@@ -1174,6 +1273,35 @@ findText fallback; nav steps use nav() + timeoutMs 700 + fallbackRoute; long in-
 deliberate + timeoutMs 9000 + dwellMs 1000; the finale has dwellMs 3500.
 Export DEMO_SCRIPT, NARRATION and CHAPTER_META (type-only imports so Node can import the file).
 Then print the script as a table (chapter, id, action, target, words, line) and the estimateDurationMs total.
+```
+
+### Prompt 2C · Table read (critique, then tighten)
+```
+Read src/demo/<audience>.ts (or the draft lines), docs/demo/<audience>-brief.md and §4.3-§4.4.
+Do a table read as this audience: you are <ROLE>, sceptical, short on time, seeing this for the first time.
+
+For every line, score 1-5 on: clear to them, matters to them (which brief field?), specific (a real
+number or name on screen?), sounds human spoken aloud, true while its click happens. Then:
+- flag jargon they wouldn't use, claims without a source, features with no "so what" for them, lines
+  that describe what's already visible, and any number not on screen or in the sources;
+- list where their top 3 objections are answered (step ids); if one isn't, add or change a step;
+- check the arc: is there a clear hook, an aha by ~30 s, rising proof, a guardrail and a callback
+  ending? Where would they stop watching? Fix that spot first.
+Rewrite the weak lines (keep step ids unless the step's meaning changed), cut steps that don't earn
+their time, and show a before/after table plus the new total duration. Only after I approve, regenerate
+narration for the changed lines.
+```
+
+### Prompt 2D · Re-cut the tour for another audience
+```
+We have a working tour for <AUDIENCE A> (src/demo/<a>.ts). Make a variant for <AUDIENCE B>.
+Follow §4.4: build B's brief (Prompt 2A), then the spine (Prompt 2B), then the script, then the table
+read (Prompt 2C).
+Reuse the shared step builders (targets, actions, timing); change the lines, the chapter order, chapter
+titles and the protagonist case where B cares about something else. Prefix B's step ids with "<b>-" so
+it gets its own audio; export it as a separate tour selectable with &tour=<b>; add it to the splash tabs.
+Show a side-by-side table of the same screens with A's line and B's line, then run the e2e for both
+tours and generate narration only for B.
 ```
 
 ### Prompt 3 · Engine and overlay
@@ -1256,7 +1384,8 @@ for both tours. Don't rename step ids unless the step's meaning changed (ids are
 
 - [ ] **Host readiness:** `data-demo` ids, deterministic `reset()`, fixed demo clock, store actions for handoffs, Escape closes overlays, exiting pages ignore taps, visible progress during in-app animations (§8)
 - [ ] **Core:** `types.ts`, `runner.ts`, `narrator.ts`, `start.ts` (§12.1–12.4) + `runner.test.ts`
-- [ ] **Script:** steps with ids/chapters/targets/lines; `NARRATION` + `CHAPTER_META`; lines follow §4.3
+- [ ] **Story:** audience brief, protagonist case and story spine written and sourced; chapters ordered by the audience's priorities (§4.4, Prompts 2A–2B)
+- [ ] **Script:** steps with ids/chapters/targets/lines; `NARRATION` + `CHAPTER_META`; lines follow §4.3; table read done (Prompt 2C)
 - [ ] **Controller:** async loop + AbortController + `live` ref; seat → route → page settle → target → **narrate first** → scroll → glide → click → await line → dwell (§2.2, §12.5)
 - [ ] **Narration chain:** MP3 → speech → timer; synchronous unlock in the click; blocked-autoplay path with "Tap for sound" and gesture consumption; word reveal; preload next
 - [ ] **Overlay:** Spotlight (box-shadow hole, rAF tracking, drop when covered), Cursor (Bézier spring, halo, ripple), SubtitleDock (dockEdge + SETTLE_PAD + hold), progress rail, controls with auto-hide, Splash, EndCard, ChapterOverview, UpNext, SeatCard
