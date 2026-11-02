@@ -6,9 +6,9 @@ This document describes an **autopilot product tour**: press Play and the real a
 
 It is **not a video and not a mock**. Every click goes to the real app, so the demo can never drift from the product, and a viewer can take over at any moment ("let me try that").
 
-> Reference build: a React 19 + Vite + Tailwind + `motion` PWA (a B2B reinsurance platform demo, Sep 2026). Two tours, 47 + 41 steps, 79 narrated lines, ~6,100 characters of ElevenLabs audio (~7 min), about 4.5 min per tour at 1×. Built and hardened in a few days with Claude Code. The code in §12 is lifted from that build and is unit- and e2e-tested there.
+> Reference build: a React 19 + Vite + Tailwind + `motion` PWA (a B2B reinsurance platform demo, Sep 2026). Two tours, 47 + 41 steps, 79 narrated lines, ~6,100 characters of audio (~7 min), about 4.5 min per tour at 1×. Narration is now rendered locally with Kokoro `af_heart` by default, at no cost per line (§7). Built and hardened in a few days with Claude Code. The code in §12 is lifted from that build and is unit- and e2e-tested there.
 
-Everything needed to rebuild it is here: the UX, the architecture, every algorithm and timing constant, the tested core code, the narration pipeline, the test harness, the lessons from 13 rounds of fixes, how to tailor the story to each audience (§4.4), and the **prompts** (§14) that make an AI coding agent build it end to end.
+Everything needed to rebuild it is here: the UX, the architecture, every algorithm and timing constant, the tested core code, the narration pipeline, the test harness, the lessons from 13 rounds of fixes, how to tell it as a story (§4.5), how to tailor that story to each audience (§4.4), and the **prompts** (§14) that make an AI coding agent build it end to end.
 
 ---
 
@@ -19,7 +19,7 @@ Everything needed to rebuild it is here: the UX, the architecture, every algorit
 | **Self-driving tour** | An ordered script of steps; each step navigates, finds a real element, scrolls it into comfortable view, glides the cursor there, optionally clicks, and narrates one line |
 | **Spotlight** | Everything except the target dims; a soft ring springs from target to target and follows it through layout shifts |
 | **Cursor** | A large branded pointer with a breathing halo moves on a curved, spring-eased path; a press plus a double-ring ripple on click |
-| **Narration** | Pre-rendered MP3 per line (two voices) → browser speech synthesis → silent timer. Subtitles reveal word by word in sync |
+| **Narration** | Pre-rendered MP3 per line (Kokoro `af_heart` by default, §7) → browser speech synthesis → silent timer. Subtitles reveal word by word in sync |
 | **Subtitle dock** | Frosted-glass bar, at most 2 lines (3 on a phone), bottom of the screen; jumps to the top only if it would cover the target |
 | **Controls** | Play/pause, previous/next step, chapter overview, voice menu (voice, subtitles-only, replay line), speed 1× / 1.25×, seat (persona) switch, exit. Auto-hide after 2 s idle |
 | **Interruptible** | Any real tap or keypress pauses. Resume returns to the same seat, page and step. Esc exits |
@@ -114,7 +114,8 @@ src/demo/
     EndCard.tsx     # finale lines + Replay / Close
   runner.test.ts, dock.test.ts
 scripts/
-  gen-narration.mjs     # ElevenLabs → public/audio/demo/<voice>/<stepId>.mp3 + manifest.json (§7, §12.9)
+  gen-narration-kokoro.mjs  # default: local Kokoro → public/audio/demo/heart/<stepId>.mp3 + manifest.json (§7, §12.9a)
+  gen-narration.mjs     # optional: ElevenLabs voices, same output shape (§7, §12.9)
   autopilot-e2e.mjs     # Playwright: full tours, chapter jumps, autoplay policy, audio (§9.3)
   capture-thumbs.mjs    # chapter thumbnails from a muted 2× run → public/demo/thumbs/<chapter>.webp
 public/
@@ -212,6 +213,8 @@ Keep script files **free of runtime imports** (type-only imports), so `node scri
 - **Name the human guardrail** wherever AI acts: "Nothing goes out until you approve it."
 - **Chapters of 3–6 steps**, 8–11 chapters per tour, ~4–5 min per tour at 1×. A finale of one or two lines, then the end card.
 - **Spell numbers the way they should be spoken** if the TTS stumbles ("ninety percent", "1 January").
+- **Write for the ear.** One idea per sentence. A comma is a short pause and a full stop is a reset, so "Pack read. Gap closed. Score up." sounds more human than one long clause. Use contractions, and vary sentence length so the voice doesn't settle into one rhythm. Fix the script before touching voice settings.
+- **Say who does the work.** Name the product for platform work and the AI for AI work: "Acme will post the entry", "Acme AI will read every file". Keep human approvals in the present tense ("A person approves it"), because that never changes. If the product hasn't launched, use "will" for what it does and the present tense only for today's problem, so the tour never claims something is live.
 
 ### 4.4 Tailoring the story to the audience
 
@@ -270,6 +273,44 @@ Order the chapters by **this person's priorities**, not by the app's navigation.
 - **No invented facts.** Every number, name and quote must exist in the app or the sources; flag anything else.
 
 **Variants in code:** keep shared step builders (targets, actions, timing) in one module and one script file per audience that supplies the lines, the order and the chapter titles. Prefix step ids with the audience (`cfo-hook`, `ops-hook`) so each variant gets its own audio files, export each as a separate tour, and pick it with `&tour=cfo` (§5.10, §7). Regenerate narration only for the variant that changed.
+
+### 4.5 Telling it as a story (so anyone understands it from the first second)
+
+A tour fails when it's a list of features. It works when a stranger who knows nothing can answer three questions within 30 seconds of pressing Play: **what is this, why should I care, and who am I following?** Assume no presenter is there to fill the gaps, because a forwarded link has none.
+
+**The structure**
+
+| # | Beat | What it does | Shown on | Example line |
+|---|---|---|---|---|
+| 1 | **Welcome** | Says what the product is, in one sentence | Full-screen slide | "Welcome to Acme. One end-to-end platform for freight claims." |
+| 2 | **Problem** | The pain today, in the audience's terms, with one number | Full-screen slide | "Today, carriers wait six weeks to learn what a claim will cost." |
+| 3 | **The big picture** | The solution, on its single most impressive screen | The app's overview screen | "Acme will show every claim, from first report to final payment, in one place." |
+| 4 | **The cast** | Announces how the story will be told and who is in it | Full-screen slide, naming each party as the voice does | "Now let's follow one claim through the eyes of everyone who touches it." |
+| 5 | **The journey** | One concrete case, moving from party to party in order | The real app, seat by seat | "It starts where the business starts: a shipper with a damaged load." |
+| 6 | **The turn** | The first thing nobody could do before | One chapter | "Acme AI will read every file, and say what's missing." |
+| 7 | **Rising proof** | Two or three wins, each bigger than the last | Later chapters | A specific number the viewer can see on screen |
+| 8 | **Guardrail** | Answers the biggest fear on screen: who approves, what's audited | Woven in, or one chapter | "Nothing moves until a person approves it." |
+| 9 | **Payoff** | Returns to the overview, now earned, and echoes the problem | The overview screen again | "Every party's work adds up to one picture." |
+| 10 | **Close** | One line, then the end card with a single next step | End card | Tagline plus one call to action |
+
+**Show the big picture before the people.** Open on the welcome and the problem, then let the overview screen do the impressing, and only then introduce the cast. The whole-system view is what makes a viewer want to see how it works. Starting straight in one persona's screen feels like being dropped into someone else's job.
+
+**Never let a slide stay silent.** A seat change is a scene change, and a scene change without a narrator is where viewers get lost. Speak over every title card and hold the card until the line ends. Each transition line says who we're meeting and why the story has moved to them: "The program is bound. Back to the reinsurer, to see what it now holds."
+
+**Make the title cards readable by a stranger.** Show the organisation and its full role ("Managing general agent"), never internal shorthand like "Now in Maya's seat". Keep a small row of all the parties on every card with the current one highlighted, so the viewer always knows where they are in the journey.
+
+**Keep the end card out of the way.** It should appear only on the very last step. If a chapter called Finale has a spoken line before the sign-off, that line must play on its own screen, not behind the end card.
+
+**Rules that keep it clear**
+- **One protagonist case, start to finish.** The viewer should be able to retell it in a sentence. Don't swap examples midway.
+- **Chronological beats clever.** Follow the order things happen in real life, so each scene gives a reason for the next.
+- **Introduce before you use.** Name a company, role or term the first time, in plain words, before relying on it.
+- **Write to the viewer, not your first customer.** Lines written for one buyer ("you told us") become baffling when that person forwards the link. Remove "you", "tonight" and insider phrases from any tour that travels.
+- **Check each line against who's watching.** Read it as each audience. A line that delights the buyer ("nobody else sees your margin") can alarm the partner hearing it.
+- **Say it's sample data.** Say so early, and keep a small label on screen for the whole tour. Without it, a demo metric sounds like a real result.
+- **Avoid claims you can't defend.** "First of its kind" invites a counter-example, and "no latency" is rarely true. "One end-to-end platform" says the same thing safely.
+
+**The cold-open test.** Show the first 30 seconds to someone outside the project, with no introduction. Ask what the product is, what problem it solves and who the story follows. If they can't answer all three, fix the opening before polishing anything else.
 
 ---
 
@@ -339,7 +380,7 @@ The dock sits at the bottom; it moves to the top only if it would cover the spot
 `chapter.prepare(actions)` fast-forwards from a **clean reset** using the app's real store actions (not DOM clicks), e.g. "advance this deal, finish intake, build the placement", and may return the route to open. Example: the "Ledger" chapter prepares everything *before* the approval, because the approval is what the chapter shows. Every chapter must play correctly when jumped to cold; the e2e harness checks each one.
 
 ### 5.10 Multi-persona tours
-`seatAt(steps, i)` = the nearest earlier `seat`. On a change: show the seat card (colour wash in the persona's brand colour, "Now in <Name>'s seat"), wait 380 ms, `setPersona`, navigate to `step.route ?? persona.home`, hold 1220 ms, hide. Persona **before** navigation: a persona's guard won't render another persona's routes. Exiting the tour always returns the app to the primary persona.
+`seatAt(steps, i)` = the nearest earlier `seat`. On a change: show the seat card (colour wash in the persona's brand colour, with the organisation, its full role and a row of all parties, §4.5), wait 380 ms, `setPersona`, navigate to `step.route ?? persona.home`, speak the step's optional `seatLine` over the card and hold until it ends (or hold 1220 ms if there's no line), hide. Persona **before** navigation: a persona's guard won't render another persona's routes. Exiting the tour always returns the app to the primary persona.
 
 ### 5.11 Up next
 Between chapters (when `tour.upNext`): a card with the next chapter's thumbnail and a 3 s draining countdown; "Go now" resolves early and "Stay here" pauses. The multi-persona tour uses seat cards instead.
@@ -352,7 +393,7 @@ Between chapters (when `tour.upNext`): a card with the next chapter's thumbnail 
 |---|---|
 | **Dock** | Frosted ink glass, max ~720 px wide, 2 lines (3 on a phone), word-by-word reveal (future words at 25% opacity), chapter name + `n / total`, a draining dwell line |
 | **Progress rail** | A 2 px bar on the dock edge; chapter ticks; hover or drag shows a thumbnail tooltip; click jumps to that chapter |
-| **Buttons** | ◀ ▶ ⏯, chapter grid, voice (Bella / Samantha / Browser voice / Subtitles only / Replay line), seat chip (pauses and switches persona), 1× / 1.25×, ✕ |
+| **Buttons** | ◀ ▶ ⏯, chapter grid, voice (Heart / any other recorded voice / Browser voice / Subtitles only / Replay line), seat chip (pauses and switches persona), 1× / 1.25×, ✕ |
 | **Tap for sound pill** | Shown when autoplay is blocked; pulses |
 | **Chapter overview** | Full-screen grid: thumbnail, title, step count and approximate duration (`estimateDurationMs`), seat badge; tour tabs; keyboard-navigable; owns the keyboard while open |
 | **Splash** | Tour tabs + blurb, voice picker, a big Play button |
@@ -363,16 +404,28 @@ Between chapters (when `tour.upNext`): a card with the next chapter's thumbnail 
 
 ---
 
-## 7. Narration Pipeline (ElevenLabs)
+## 7. Narration Pipeline (Kokoro by default, ElevenLabs optional)
+
+**Default voice: Kokoro `af_heart`.** Kokoro-82M is an open-weight model (Apache 2.0) that runs on your own machine. It needs no API key and has no per-character cost, so a script change is re-recorded in seconds. On an Apple Silicon Mac it takes about 3–4 seconds per line through `mlx-audio` (§12.9a). Use the recorded voice as the app's default narrator, under a friendly label such as "Heart".
+
+Use ElevenLabs (§12.9) when you want a specific paid voice. The generators write the same files, so the app doesn't care which one made them.
+
+**Kokoro pronunciation (check this before shipping):**
+- **Scan for unknown words.** Run the script through Kokoro's phonemiser (misaki) and list anything it can't resolve. Brand and place names are the usual problem, and an unknown word can be mispronounced or dropped with no error.
+- **Fix them in a `SPOKEN` map, not in the script.** The subtitle keeps the real spelling and only the text sent to the model changes: `Acmeline` → `Acme line`. For stress problems, use inline phonemes: `[August's](/ˈɔɡəsts/)`. Words that depend on tense need help too, such as past-tense "read" → "red".
+- **Transcribe the audio back.** Run every clip through Whisper and diff it against the script. This catches dropped words, which you'd otherwise only find by listening to the whole tour. Homophones ("border row" for "bordereau") are fine; a missing name is not.
+- **Then listen once, start to finish.** Machines can't judge whether a word sounds right to a customer.
+- **Include the hash of the spoken text,** not the subtitle, so changing a pronunciation re-records that line.
 
 - **One source of truth:** `NARRATION` exports from the script files. The generator imports them directly.
 - **Output:** `public/audio/demo/<voice>/<stepId>.mp3` + `manifest.json` `{ id: { hash, chars, durationMs, text } }`, kept in script order.
 - **Incremental:** hash = sha256 of `{ text, voiceId, model, format, settings }`. Only changed lines are regenerated (`--force` and `--only=a,b` to override). Lines that no longer exist are dropped from the manifest.
-- **Request stitching:** send `previous_text` / `next_text` (within a tour, not across tours) so intonation flows across separate files.
-- **Duration** without decoding: 128 kbps CBR → `bytes × 8 / 128` ms. The app fetches the manifest and uses these durations to pace subtitles when audio is blocked.
-- **Settings that worked:** `eleven_multilingual_v2`, `mp3_44100_128`, `{ stability: 0.5, similarity_boost: 0.8, style: 0.25, use_speaker_boost: true }`. Two voices (one bright and warm, one relaxed) let the presenter choose.
-- **Key handling:** read `ELEVENLABS_API_KEY` from a git-ignored env file; never print it. Retries 3× on 5xx/429.
-- **Cost guide:** ~6,100 characters for 79 lines ≈ 7 min of audio per voice (~6.7 MB per voice at 128 kbps).
+- **Request stitching (ElevenLabs):** send `previous_text` / `next_text` (within a tour, not across tours) so intonation flows across separate files.
+- **Duration** without decoding (CBR): 128 kbps → `bytes × 8 / 128` ms. For Kokoro, read it with `ffprobe`. The app fetches the manifest and uses these durations to pace subtitles when audio is blocked.
+- **ElevenLabs settings that worked:** `eleven_multilingual_v2`, `mp3_44100_128`, `{ stability: 0.5, similarity_boost: 0.8, style: 0.25, use_speaker_boost: true }`. Two voices (one bright and warm, one relaxed) let the presenter choose.
+- **Key handling (ElevenLabs):** read `ELEVENLABS_API_KEY` from a git-ignored env file; never print it. Retries 3× on 5xx/429.
+- **Cost guide:** ~6,100 characters for 79 lines ≈ 7 min of audio per voice (~6.7 MB per voice at 128 kbps). Kokoro: no per-character cost, and ~2.5 MB for a 3.5-minute tour at 96 kbps mono.
+- **Watch your plan limits (ElevenLabs).** A month's characters can run out mid-project, and a renewal payment can hold up the refill for hours. A local voice means a release never waits on billing.
 
 ---
 
@@ -453,6 +506,10 @@ Both tours run in all cases (`TOUR=lifecycle`).
 18. **Measure real duration** with the harness and quote that, not the estimate.
 19. **Step ids are audio filenames;** renaming one silently falls back to browser speech. The unit test checks every step has an audio file.
 20. **Strip `?play_demo` from the URL** after starting, so a reload doesn't restart the tour.
+21. **A silent title card loses people.** Viewers can't decode a 1.6-second slide on their own; speak over it and hold it for the line (§4.5).
+22. **Start on the big picture, then the people.** A persona screen as the opening feels confusing; the overview first feels impressive (§4.5).
+23. **A chapter-based end card can cover a spoken line.** Trigger the end card on the last step, not on the Finale chapter.
+24. **Local TTS fails quietly on names.** Scan for unknown words and transcribe the audio back (§7).
 
 ---
 
@@ -483,6 +540,10 @@ export interface DemoStep {
   closest?: string
   action: DemoAction
   subtitle: string
+  /** Spoken over the seat's title card, which stays up until the line ends (§4.5). */
+  seatLine?: { id: string; subtitle: string }
+  /** Plays on a full-screen slide instead of the app (the tour's opening, §4.5). */
+  opening?: { title: string; sub: string; cast?: boolean }
   dwellMs?: number
   deliberate?: string
   timeoutMs?: number
@@ -1035,7 +1096,7 @@ expect(dockEdge({ x: 769, y: 78, w: 373, h: 797, r: 14 }, vh, dockH, bottomGap, 
 expect(dockEdge({ x: 15, y: 760.4, w: 318, h: 61.98, r: 14 }, 844, 84.16, 76, 68)).toBe('top')           // ring still settling
 ```
 
-### 12.9 `scripts/gen-narration.mjs`
+### 12.9 `scripts/gen-narration.mjs` (optional, ElevenLabs)
 ```js
 #!/usr/bin/env node
 // node scripts/gen-narration.mjs --voice voiceA | --voice all [--force] [--only=intro,finale]
@@ -1113,6 +1174,56 @@ const key = readKey()
 for (const v of voiceNames) await generate(key, tours, v)
 ```
 
+### 12.9a `scripts/gen-narration-kokoro.mjs` (default)
+Needs `ffmpeg` and a Python virtualenv with `mlx-audio` and `misaki[en]` (Apple Silicon). On other platforms use the `kokoro` Python package and swap the one `execFileSync` that renders the wav.
+```js
+#!/usr/bin/env node
+// node scripts/gen-narration-kokoro.mjs [--force]   Renders changed lines locally. No API, no credits.
+import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const APP = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const OUT = join(APP, 'public/audio/demo/heart')
+const MANIFEST = join(OUT, 'manifest.json')
+const VENV = process.env.TTS_VENV ?? join(homedir(), 'tts/venv')
+const MODEL = 'mlx-community/Kokoro-82M-bf16'
+const VOICE = 'af_heart'
+
+/** Words Kokoro misreads. The subtitle keeps the real spelling; only the spoken text changes. */
+const SPOKEN = [
+  [/Acmeline/g, 'Acme line'],
+  // [/August's/g, "[August's](/ˈɔɡəsts/)"],  // inline phonemes for stress
+]
+const spoken = (text) => SPOKEN.reduce((t, [from, to]) => t.replace(from, to), text)
+const hashOf = (text) => createHash('sha256').update(`${MODEL}|${VOICE}|${text}`).digest('hex').slice(0, 16)
+
+const { NARRATION } = await import(join(APP, 'src/demo/script.ts'))
+const force = process.argv.includes('--force')
+mkdirSync(OUT, { recursive: true })
+const manifest = existsSync(MANIFEST) ? JSON.parse(readFileSync(MANIFEST, 'utf8')) : {}
+const tmp = mkdtempSync(join(tmpdir(), 'kokoro-'))
+const env = { ...process.env, VIRTUAL_ENV: VENV, PATH: `${VENV}/bin:${process.env.PATH}` }
+
+for (const { id, subtitle } of NARRATION) {
+  const hash = hashOf(spoken(subtitle))
+  const file = join(OUT, `${id}.mp3`)
+  if (!force && existsSync(file) && manifest[id]?.hash === hash) continue
+  execFileSync('mlx_audio.tts.generate', ['--model', MODEL, '--voice', VOICE, '--lang_code', 'a', '--text', spoken(subtitle),
+    '--output_path', tmp, '--file_prefix', id, '--join_audio'], { env, stdio: 'ignore' })
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', join(tmp, `${id}.wav`), '-ar', '44100', '-ac', '1', '-b:a', '96k', file])
+  const seconds = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { encoding: 'utf8' })
+  manifest[id] = { hash, chars: subtitle.length, durationMs: Math.round(Number(seconds) * 1000), text: subtitle }
+  console.log(`  ${id}`)
+}
+rmSync(tmp, { recursive: true, force: true })
+const ordered = Object.fromEntries(NARRATION.filter(({ id }) => manifest[id]).map(({ id }) => [id, manifest[id]]))
+writeFileSync(MANIFEST, JSON.stringify(ordered, null, 2) + '\n')
+```
+
 ### 12.10 PWA update policy (pure, unit-testable)
 ```ts
 export const IDLE_MS = 60_000
@@ -1162,7 +1273,9 @@ self.addEventListener('fetch', (event) => {
 | `vitest` + `jsdom` | Unit tests |
 | `vite-plugin-pwa` (optional) | Offline precache |
 | `cwebp` (CLI) | Thumbnail encoding |
-| ElevenLabs API | Narration (`ELEVENLABS_API_KEY`) |
+| Kokoro-82M + `mlx-audio`, `misaki[en]`, `ffmpeg` | Default narration, rendered locally (§7) |
+| `mlx-whisper` (optional) | Transcribes clips back to check for dropped words |
+| ElevenLabs API (optional) | Paid narration voices (`ELEVENLABS_API_KEY`) |
 
 Browser APIs: `MutationObserver`, `requestAnimationFrame`, `HTMLAudioElement`, `speechSynthesis`, `PointerEvent`, `elementFromPoint`, `ResizeObserver`, `matchMedia`.
 
@@ -1254,6 +1367,9 @@ Design the story for this audience before any line is written.
    our menu names), beat, steps, estimated seconds. Total within their time budget (~150 spoken words per
    minute + click time). List the app features you deliberately left out and why.
 4. Write the hook line and the closing callback line first, as a pair, so the ending pays off the opening.
+5. Follow §4.5: welcome, problem, big picture, cast, journey, payoff, close. Write a spoken line for every
+   title card, and say what a stranger will understand after 30 seconds (what it is, why it matters, who
+   we're following).
 Show the spine and chapter plan as tables. Don't write the full script yet.
 ```
 
@@ -1320,11 +1436,13 @@ Add runner.test.ts and dock.test.ts from §9.4. Run the unit tests and play the 
 
 ### Prompt 4 · Narration audio
 ```
-Create scripts/gen-narration.mjs from docs/features/guided-demo-autopilot.md §7 and §12.9.
-Voices: <voiceA name + ElevenLabs voice id>, <voiceB …>. Key: ELEVENLABS_API_KEY from <.dev.vars / env>;
-never print it. Generate --voice all. Then verify: every NARRATION id has an mp3 and a manifest entry for
-each voice (add this as a unit test), report total characters and audio minutes, and play the first
-chapter in a browser with sound to confirm the subtitles track the voice.
+Create scripts/gen-narration-kokoro.mjs from docs/features/guided-demo-autopilot.md §7 and §12.9a, with
+Kokoro af_heart as the default narrator (label it "Heart"). Generate every line. Then:
+1. Scan the script with Kokoro's phonemiser and list unknown words; fix them in the SPOKEN map.
+2. Transcribe every clip back with Whisper and diff it against the script; report anything dropped or misread.
+3. Add a unit test that every NARRATION id has an mp3 and a manifest entry.
+4. Report audio minutes, and play the first chapter in a browser to confirm the subtitles track the voice.
+Tell me which words need a human ear. Only if I name a paid voice, add scripts/gen-narration.mjs (§12.9).
 ```
 
 ### Prompt 5 · Chapters, thumbnails and a second tour
@@ -1384,7 +1502,7 @@ for both tours. Don't rename step ids unless the step's meaning changed (ids are
 
 - [ ] **Host readiness:** `data-demo` ids, deterministic `reset()`, fixed demo clock, store actions for handoffs, Escape closes overlays, exiting pages ignore taps, visible progress during in-app animations (§8)
 - [ ] **Core:** `types.ts`, `runner.ts`, `narrator.ts`, `start.ts` (§12.1–12.4) + `runner.test.ts`
-- [ ] **Story:** audience brief, protagonist case and story spine written and sourced; chapters ordered by the audience's priorities (§4.4, Prompts 2A–2B)
+- [ ] **Story:** audience brief, protagonist case and story spine written and sourced; chapters ordered by the audience's priorities; opens with welcome, problem, big picture and cast; every title card is spoken; cold-open test passed (§4.4–4.5, Prompts 2A–2B)
 - [ ] **Script:** steps with ids/chapters/targets/lines; `NARRATION` + `CHAPTER_META`; lines follow §4.3; table read done (Prompt 2C)
 - [ ] **Controller:** async loop + AbortController + `live` ref; seat → route → page settle → target → **narrate first** → scroll → glide → click → await line → dwell (§2.2, §12.5)
 - [ ] **Narration chain:** MP3 → speech → timer; synchronous unlock in the click; blocked-autoplay path with "Tap for sound" and gesture consumption; word reveal; preload next
@@ -1392,7 +1510,7 @@ for both tours. Don't rename step ids unless the step's meaning changed (ids are
 - [ ] **Input:** pause on trusted input only; Space/k, ←/→, Esc; Resume restores seat and page; Next performs the pending click
 - [ ] **Chapters:** `prepare()` cold jumps; thumbnails; up-next countdown; multi-persona seat cards (persona before route); exit to the primary seat
 - [ ] **Deep links:** `?play_demo=true&tour&chapter&speed&voice&mute`, `?demo=1`; strip params after start
-- [ ] **Audio:** `gen-narration.mjs` (hash manifest, stitching, durations); a test that every step has audio for every voice
+- [ ] **Audio:** `gen-narration-kokoro.mjs` with `af_heart` (hash manifest, durations, `SPOKEN` fixes, clips transcribed back); a test that every step has audio for every voice
 - [ ] **Observability:** `data-autopilot-*` attributes, `window.__autopilotLog`
 - [ ] **E2E:** tour / jump-every-chapter / autoplay / audio on desktop + phone, on `vite preview`; gaps ≤1.2 s, targets ≤1.5 s, no skips
 - [ ] **(PWA)** precache mp3, `sw-range.js`, no reload mid-tour, offline check
