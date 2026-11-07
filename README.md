@@ -23,6 +23,14 @@ These specs are extracted from real, shipped products. No theory — just battle
 
 Each spec includes a **Porting Checklist** at the bottom — a step-by-step list of everything you need to implement.
 
+## Skills
+
+Drop-in skills for AI coding agents (Claude Code, Codex, Cursor and others that support `SKILL.md`).
+
+| Skill | What it is |
+|---|---|
+| [Shipshape](./skills/shipshape) | One design skill for pages, product UI, dashboards, charts, decks and briefs: a short plan-build-look process, 22 core rules, surface-by-surface boldness, client-safe output rules, a catalogue of generated-design tells and a 20-point QA checklist. Distilled from a dozen leading design skills (credited) plus Quantana's own practice. |
+
 ## Feature Specs
 
 Browse by category. Each link opens a self-contained spec with code, schema, and a porting checklist.
