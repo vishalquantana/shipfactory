@@ -413,7 +413,7 @@ Use ElevenLabs (§12.9) when you want a specific paid voice. The generators writ
 **Kokoro pronunciation (check this before shipping):**
 - **Scan for unknown words.** Run the script through Kokoro's phonemiser (misaki) and list anything it can't resolve. Brand and place names are the usual problem, and an unknown word can be mispronounced or dropped with no error.
 - **Fix them in a `SPOKEN` map, not in the script.** The subtitle keeps the real spelling and only the text sent to the model changes: `Acmeline` → `Acme line`. For stress problems, use inline phonemes: `[August's](/ˈɔɡəsts/)`. Words that depend on tense need help too, such as past-tense "read" → "red".
-- **Transcribe the audio back.** Run every clip through Whisper and diff it against the script. This catches dropped words, which you'd otherwise only find by listening to the whole tour. Homophones ("border row" for "bordereau") are fine; a missing name is not.
+- **Transcribe the audio back** with the audio check in §7.1. It catches dropped and misheard words, which you'd otherwise only find by listening to the whole tour.
 - **Then listen once, start to finish.** Machines can't judge whether a word sounds right to a customer.
 - **Include the hash of the spoken text,** not the subtitle, so changing a pronunciation re-records that line.
 
@@ -426,6 +426,41 @@ Use ElevenLabs (§12.9) when you want a specific paid voice. The generators writ
 - **Key handling (ElevenLabs):** read `ELEVENLABS_API_KEY` from a git-ignored env file; never print it. Retries 3× on 5xx/429.
 - **Cost guide:** ~6,100 characters for 79 lines ≈ 7 min of audio per voice (~6.7 MB per voice at 128 kbps). Kokoro: no per-character cost, and ~2.5 MB for a 3.5-minute tour at 96 kbps mono.
 - **Watch your plan limits (ElevenLabs).** A month's characters can run out mid-project, and a renewal payment can hold up the refill for hours. A local voice means a release never waits on billing.
+
+
+### 7.1 Audio check: let the narrator hear itself
+
+A rendered line can be wrong without any error: a place name read the American way, a brand split in two, or a word dropped. Don't wait for a person to notice in the meeting. After every render, **transcribe each clip locally, compare it with the subtitle, and fix the lines that don't come back right by changing only the spoken text.** The subtitle on screen never changes.
+
+**The loop (run it until every line passes):**
+
+1. **Render** the changed lines (§12.9a).
+2. **Transcribe** each MP3 locally with Whisper (`mlx-whisper` on Apple Silicon, `faster-whisper` elsewhere). Keep it offline and free, like the voice. Pass `language="en"` (or the tour's language) so Whisper doesn't guess.
+3. **Compare** the transcript with the subtitle after normalising both: lower case, no punctuation, numbers as digits ("twenty twenty-six" and "2026" are the same). Flag a line if any word from the subtitle is missing, or if a **watch word** (brand, product, place or person name) is not heard exactly.
+4. **Find the risky words before you listen.** Run the subtitles through misaki (`G2P(trf=False, british=...)`), the phonemiser Kokoro uses. Any word it marks `❓` is unknown and will be guessed, so put it on the watch list.
+5. **Respell** each flagged word in the `SPOKEN` map using literal, sound-it-out text, the way you'd write it for a newsreader: `Chalo` → `Chalow`, `Hussain Sagar` → `Husain Saagar`, `Acmeline` → `Acme line`. Plain respelling is easier to review than phonemes. Use inline phonemes (`[Chalo](/ʧʌloʊ/)`) only when no respelling works.
+6. **Re-render only those lines.** The cache hash covers the spoken text, so they re-record automatically. Then transcribe them again.
+7. **Stop when every line passes, or after three tries on a line.** If a line still fails after three tries, reword it in the script, or accept it and record why in the `ACCEPTED` list (for example, Whisper hears "border row" for "bordereau", which sounds right when you listen).
+8. **Listen once, start to finish.** Whisper confirms what was said, not whether it sounds natural to this audience.
+
+**Try respellings in the real sentence.** The same respelling can work in one sentence and fail in another, because the voice changes stress with context. In testing, `Chuh-lo` came back as "cello" and `Chah-low` as "Jalo", while `Chalow` came back exactly right. Try three or four candidates in the real sentence and keep the first one that transcribes exactly.
+
+**Whisper spells some sounds differently.** "Hussein", "Husein" and "Hussain" sound the same, so list same-sound spellings in `HEARD_AS` rather than fighting them with respellings.
+
+**What to put on the watch list:** the product name, every place and person the tour names, local words (festival names, dishes, transport such as `TGSRTC`), and any acronym. Read these from the subtitles automatically (capitalised words and acronyms) and add the rest by hand.
+
+**What Whisper can't tell you:** a correct transcript doesn't mean the right accent or stress. Whisper often corrects a mispronounced but well-known name back to its usual spelling. For names that matter, also check that the clip isn't unusually long or short for its word count (more than about 25% off the voice's normal pace), and listen to those lines yourself.
+
+**Pick the voice for the audience before you tune the words.** A respelling that fixes one voice can break another, so choose the voice first, then run the loop. Kokoro has regional voices. For an Indian audience use `hf_alpha` (Indian female) with `--lang_code b`. In a Nov 2026 test, its Hindi mode (`h`) truncated long English lines and switched language mid-sentence. Re-check this with your own script before you rely on it. Store the voice and language in the generator, and include both in the cache hash.
+
+**Real example** (Chalo Telangana tour, `hf_alpha`):
+
+| Subtitle (unchanged) | First transcript | Spoken text after the fix |
+|---|---|---|
+| She opens Chalo Telangana | She opens **Charlo** Telangana | She opens **Chalow** Telangana |
+| the crowd building at Hussain Sagar | the crowd building at **Hassan** Sagar | the crowd building at **Husain Saagar** |
+
+The check script is §12.9b. Run it after every render, and before you ship.
 
 ---
 
@@ -1191,15 +1226,12 @@ const OUT = join(APP, 'public/audio/demo/heart')
 const MANIFEST = join(OUT, 'manifest.json')
 const VENV = process.env.TTS_VENV ?? join(homedir(), 'tts/venv')
 const MODEL = 'mlx-community/Kokoro-82M-bf16'
-const VOICE = 'af_heart'
+const VOICE = process.env.TTS_VOICE ?? 'af_heart'  // e.g. hf_alpha for an Indian audience (§7.1)
+const LANG = process.env.TTS_LANG ?? 'a'           // hf_alpha: use 'b'
 
-/** Words Kokoro misreads. The subtitle keeps the real spelling; only the spoken text changes. */
-const SPOKEN = [
-  [/Acmeline/g, 'Acme line'],
-  // [/August's/g, "[August's](/ˈɔɡəsts/)"],  // inline phonemes for stress
-]
-const spoken = (text) => SPOKEN.reduce((t, [from, to]) => t.replace(from, to), text)
-const hashOf = (text) => createHash('sha256').update(`${MODEL}|${VOICE}|${text}`).digest('hex').slice(0, 16)
+// Words Kokoro misreads, respelled. Shared with the audio check (§12.9b).
+const { spoken } = await import(join(APP, 'scripts/spoken.mjs'))
+const hashOf = (text) => createHash('sha256').update(`${MODEL}|${VOICE}|${LANG}|${text}`).digest('hex').slice(0, 16)
 
 const { NARRATION } = await import(join(APP, 'src/demo/script.ts'))
 const force = process.argv.includes('--force')
@@ -1212,7 +1244,7 @@ for (const { id, subtitle } of NARRATION) {
   const hash = hashOf(spoken(subtitle))
   const file = join(OUT, `${id}.mp3`)
   if (!force && existsSync(file) && manifest[id]?.hash === hash) continue
-  execFileSync('mlx_audio.tts.generate', ['--model', MODEL, '--voice', VOICE, '--lang_code', 'a', '--text', spoken(subtitle),
+  execFileSync('mlx_audio.tts.generate', ['--model', MODEL, '--voice', VOICE, '--lang_code', LANG, '--text', spoken(subtitle),
     '--output_path', tmp, '--file_prefix', id, '--join_audio'], { env, stdio: 'ignore' })
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', join(tmp, `${id}.wav`), '-ar', '44100', '-ac', '1', '-b:a', '96k', file])
   const seconds = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { encoding: 'utf8' })
@@ -1220,8 +1252,94 @@ for (const { id, subtitle } of NARRATION) {
   console.log(`  ${id}`)
 }
 rmSync(tmp, { recursive: true, force: true })
+// Next: node scripts/check-narration.mjs  (§7.1). Don't ship until it passes.
 const ordered = Object.fromEntries(NARRATION.filter(({ id }) => manifest[id]).map(({ id }) => [id, manifest[id]]))
 writeFileSync(MANIFEST, JSON.stringify(ordered, null, 2) + '\n')
+```
+
+### 12.9b `scripts/check-narration.mjs` (audio check, §7.1)
+Needs the same virtualenv plus `mlx-whisper` (`uv pip install mlx-whisper`). Keep `SPOKEN` in one shared module (here `scripts/spoken.mjs`) so the generator and the checker use the same map.
+```js
+#!/usr/bin/env node
+// node scripts/check-narration.mjs [--only=id1,id2]   Transcribes every clip locally and flags lines that don't come back right.
+import { execFileSync } from 'node:child_process'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const APP = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const OUT = join(APP, 'public/audio/demo/alpha')          // same folder as the generator
+const VENV = process.env.TTS_VENV ?? join(homedir(), 'tts/venv')
+const WHISPER = 'mlx-community/whisper-small-mlx'
+const REPORT = join(OUT, 'audio-check.json')
+
+/** Lines you've listened to and accepted despite a transcript mismatch, with the reason. */
+const ACCEPTED = {
+  // 'step-12': 'Whisper hears "border row" for "bordereau"; sounds right',
+}
+/** Names that must be heard exactly. Capitalised words and acronyms in subtitles are added automatically. */
+const WATCH = ['Chalo Telangana', 'Hussain Sagar', 'Golconda', 'Charminar', 'TGSRTC']
+/** Same-sound spellings Whisper may write for a name. These count as heard correctly. */
+const HEARD_AS = { 'Hussain Sagar': ['Hussein Sagar', 'Husein Sagar'] }
+const IGNORE = new Set(['I', 'A', 'The', 'Then', 'Now', 'Meet', 'She', 'He', 'They', 'We', 'You'])
+
+// Whisper writes numbers and dates as digits ("26 January", "2026"), so normalise both sides the same way.
+const UNITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve']
+const ORD = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth']
+const num = (w) => (UNITS.includes(w) ? UNITS.indexOf(w) : ORD.indexOf(w))
+const SMALL = new Set(['the', 'of', 'a', 'an', 'and', 'st', 'nd', 'rd', 'th'])  // dropped or added freely by Whisper
+const norm = (t) => t.toLowerCase().replace(/[-–]/g, ' ')
+  .replace(/twenty twenty (\w+)/g, (m, n) => (num(n) >= 0 ? `20${20 + num(n)}` : m))
+  .replace(/\b(twenty|thirty) (\w+)/g, (m, tens, n) => (num(n) > 0 ? String((tens === 'twenty' ? 20 : 30) + num(n)) : m))
+  .replace(/\b(\d+)(st|nd|rd|th)\b/g, '$1')
+  .replace(/\b[a-z]+\b/g, (w) => (num(w) > 0 ? String(num(w)) : w))
+  .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
+const words = (t) => norm(t).split(' ').filter((w) => w && !SMALL.has(w))
+
+const { NARRATION } = await import(join(APP, 'src/demo/script.ts'))
+const only = process.argv.find((a) => a.startsWith('--only='))?.slice(7).split(',')
+const manifest = JSON.parse(readFileSync(join(OUT, 'manifest.json'), 'utf8'))
+const env = { ...process.env, PATH: `${VENV}/bin:${process.env.PATH}` }
+const py = `import json,sys,mlx_whisper
+for p in sys.argv[1:]:
+  print(json.dumps({"p":p,"t":mlx_whisper.transcribe(p,path_or_hf_repo="${WHISPER}",language="en")["text"]}))`
+
+const lines = NARRATION.filter(({ id }) => (!only || only.includes(id)) && existsSync(join(OUT, `${id}.mp3`)))
+const out = execFileSync(join(VENV, 'bin/python'), ['-c', py, ...lines.map(({ id }) => join(OUT, `${id}.mp3`))], { env, encoding: 'utf8', maxBuffer: 64 << 20 })
+const heard = Object.fromEntries(out.trim().split('\n').map((l) => JSON.parse(l)).map(({ p, t }) => [p, t]))
+
+const msPerChar = lines.reduce((a, { id }) => a + manifest[id].durationMs / manifest[id].chars, 0) / lines.length
+const report = []
+for (const { id, subtitle } of lines) {
+  // Map same-sound spellings back to the real name before comparing.
+  const transcript = Object.entries(HEARD_AS).reduce((t, [name, alts]) =>
+    alts.reduce((u, alt) => u.replace(new RegExp(alt, 'gi'), name), t), heard[join(OUT, `${id}.mp3`)])
+  const got = new Set(words(transcript))
+  const missing = words(subtitle).filter((w) => !got.has(w))
+  const names = [...new Set([...WATCH.filter((n) => subtitle.includes(n)),
+    ...(subtitle.match(/\b[A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)*|\b[A-Z]{2,}\b/g) ?? []).filter((n) => !IGNORE.has(n))])]
+  const misheard = names.filter((n) => !norm(transcript).includes(norm(n)))
+  const pace = manifest[id].durationMs / manifest[id].chars / msPerChar
+  const ok = (missing.length === 0 && misheard.length === 0) || id in ACCEPTED
+  report.push({ id, ok, subtitle, transcript: transcript.trim(), missing, misheard, pace: +pace.toFixed(2) })
+  if (!ok) console.log(`✗ ${id}\n   said:  ${subtitle}\n   heard: ${transcript.trim()}\n   ${misheard.length ? `names: ${misheard.join(', ')}  ` : ''}${missing.length ? `missing: ${missing.join(' ')}` : ''}`)
+  else if (Math.abs(pace - 1) > 0.25) console.log(`~ ${id} pace ${pace.toFixed(2)}x normal: listen to it`)
+}
+writeFileSync(REPORT, JSON.stringify(report, null, 2) + '\n')
+const bad = report.filter((r) => !r.ok)
+console.log(`\n${report.length - bad.length}/${report.length} lines pass. Fix failures in SPOKEN (respell), re-render, re-run.`)
+process.exit(bad.length ? 1 : 0)
+```
+`scripts/spoken.mjs`, shared by the generator (§12.9a) and the checker:
+```js
+/** Literal respellings for the voice. Subtitles keep the real spelling. */
+export const SPOKEN = [
+  [/Chalo/g, 'Chalow'],
+  [/Hussain Sagar/g, 'Husain Saagar'],
+  // [/August's/g, "[August's](/ˈɔɡəsts/)"],  // inline phonemes only when no respelling works
+]
+export const spoken = (text) => SPOKEN.reduce((t, [from, to]) => t.replace(from, to), text)
 ```
 
 ### 12.10 PWA update policy (pure, unit-testable)
@@ -1505,6 +1623,7 @@ for both tours. Don't rename step ids unless the step's meaning changed (ids are
 - [ ] **Story:** audience brief, protagonist case and story spine written and sourced; chapters ordered by the audience's priorities; opens with welcome, problem, big picture and cast; every title card is spoken; cold-open test passed (§4.4–4.5, Prompts 2A–2B)
 - [ ] **Script:** steps with ids/chapters/targets/lines; `NARRATION` + `CHAPTER_META`; lines follow §4.3; table read done (Prompt 2C)
 - [ ] **Controller:** async loop + AbortController + `live` ref; seat → route → page settle → target → **narrate first** → scroll → glide → click → await line → dwell (§2.2, §12.5)
+- [ ] **Audio check:** voice chosen for the audience; `check-narration.mjs` passes on every line (transcribed locally, names heard exactly, respellings in `SPOKEN`, subtitles unchanged); one full listen (§7.1, §12.9b)
 - [ ] **Narration chain:** MP3 → speech → timer; synchronous unlock in the click; blocked-autoplay path with "Tap for sound" and gesture consumption; word reveal; preload next
 - [ ] **Overlay:** Spotlight (box-shadow hole, rAF tracking, drop when covered), Cursor (Bézier spring, halo, ripple), SubtitleDock (dockEdge + SETTLE_PAD + hold), progress rail, controls with auto-hide, Splash, EndCard, ChapterOverview, UpNext, SeatCard
 - [ ] **Input:** pause on trusted input only; Space/k, ←/→, Esc; Resume restores seat and page; Next performs the pending click
